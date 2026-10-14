@@ -109,6 +109,7 @@ namespace IpaDesktop
                 {
                     if (zip.Entries.Count > 30000) return details;
                     var metadata = EntryBytes(zip.GetEntry("iTunesMetadata.plist"));
+                    details.AppStoreID = Field(Value(metadata, "itemId", "itemID", "softwareVersionItemId"));
                     details.BundleID = Field(Value(metadata, "softwareVersionBundleId", "bundleId"));
                     details.AppName = Field(Value(metadata, "itemName"));
                     details.Version = Field(Value(metadata, "bundleShortVersionString", "bundleVersion"));
@@ -235,8 +236,8 @@ namespace IpaDesktop
                 Bounds(pos, size, table);
                 return type == 6 ? Encoding.BigEndianUnicode.GetString(data, pos, size) : Encoding.ASCII.GetString(data, pos, size);
             }
-            public string Account() { return Value("appleId"); }
-            public string Value(string wantedKey)
+            public string Account() { return Value("appleId", false); }
+            public string Value(string wantedKey, bool allowInteger = true)
             {
                 int pos = Offset(top);
                 int marker = data[pos++];
@@ -246,7 +247,17 @@ namespace IpaDesktop
                 for (int i = 0; i < count; i++)
                 {
                     var key = Text(IntNumber(pos + i * refSize, refSize));
-                    if (String.Equals(key, wantedKey, StringComparison.OrdinalIgnoreCase)) return Text(IntNumber(pos + (count + i) * refSize, refSize));
+                    if (String.Equals(key, wantedKey, StringComparison.OrdinalIgnoreCase))
+                    {
+                        int id = IntNumber(pos + (count + i) * refSize, refSize);
+                        int offset = Offset(id), kind = data[offset];
+                        if (allowInteger && (kind >> 4) == 1 && (kind & 15) <= 3)
+                        {
+                            int size = 1 << (kind & 15); Bounds(offset + 1, size, table);
+                            return Number(offset + 1, size).ToString(System.Globalization.CultureInfo.InvariantCulture);
+                        }
+                        return Text(id);
+                    }
                 }
                 return null;
             }

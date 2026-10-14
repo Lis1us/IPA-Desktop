@@ -116,6 +116,8 @@ namespace IpaDesktop
         {
             exitingForUpdate = true;
         }
+        internal List<DownloadItem> SelectedDownloads() { return search.SelectedDownloads(); }
+        internal void AddSetApps(IEnumerable<AppRow> apps) { search.AddSetApps(apps); }
         internal void RefreshFiles()
         {
             if (files != null) files.RefreshFiles();
@@ -202,7 +204,7 @@ namespace IpaDesktop
             cancellation = new CancellationTokenSource();
             string[] buttons =
             {
-                "Login", "AccountInfo", "Logout", "Search", "Versions", "VersionInfo", "Download", "RefreshFiles", "ImportFile", "DeleteFiles", "Devices", "InstallFiles", "CheckUpdate", "Rollback", "CheckGuiUpdate", "InstallGuiUpdate", "AddChosen", "ClearChosen", "AddInstall", "ClearInstall", "CheckAppleSupport", "CheckDeviceUpdate", "RollbackDevices", "RetryDownloads", "ForgetDownloadErrors", "RetryInstalls", "ForgetInstallErrors", "SaveSet", "UseSet", "DeleteSet", "SelectOld", "DeleteStorage", "RefreshStorage"
+                "Login", "AccountInfo", "Logout", "Search", "Versions", "VersionInfo", "Download", "RefreshFiles", "ImportFile", "DeleteFiles", "Devices", "InstallFiles", "CheckUpdate", "Rollback", "CheckGuiUpdate", "InstallGuiUpdate", "AddChosen", "ClearChosen", "AddInstall", "ClearInstall", "CheckAppleSupport", "CheckDeviceUpdate", "RollbackDevices", "RetryDownloads", "ForgetDownloadErrors", "RetryInstalls", "ForgetInstallErrors", "SaveSet", "SaveFileSet", "UseSet", "DeleteSet", "SelectOld", "DeleteStorage", "RefreshStorage"
             };
             foreach (var name in buttons) C<Button>(name).IsEnabled = false;
             C<ItemsControl>("ChosenFiles").IsEnabled = false;
@@ -341,7 +343,7 @@ namespace IpaDesktop
             ApplyActions();
             w.Loaded += delegate
             {
-                Log("IPA Desktop 0.1.17. Файлы: " + engine.Downloads);
+                Log("IPA Desktop 0.1.18. Файлы: " + engine.Downloads);
                 if (!checkAtStartup) return;
                 Work("Проверка движка и сохранённого входа…", async delegate(CancellationToken ct)
                 {
@@ -480,9 +482,20 @@ namespace IpaDesktop
             C<ComboBox>("AppSets").SelectionChanged += delegate { ApplyActions(); };
             On("SaveSet", delegate
             {
-                engine.AppSets.Save(C<TextBox>("SetName").Text, installChosen.Snapshot());
+                engine.AppSets.SaveApps(C<TextBox>("SetName").Text, view.SelectedDownloads().Select(x => new AppRow { ID = x.ID, Name = x.Name }));
                 LoadSets();
-                C<TextBlock>("SetStatus").Text = "Набор сохранён. IPA-файлы не копируются.";
+                C<TextBlock>("SetStatus").Text = "Набор сохранён по App Store ID. Аккаунт и версии IPA не сохраняются.";
+            });
+            On("SaveFileSet", delegate
+            {
+                Work("Сохранение ID из IPA…", async delegate(CancellationToken ct)
+                {
+                    var name = C<TextBox>("SetName").Text;
+                    var rows = installChosen.Snapshot();
+                    await Task.Run(delegate { ct.ThrowIfCancellationRequested(); engine.AppSets.Save(name, rows); }, ct);
+                    LoadSets();
+                    C<TextBlock>("SetStatus").Text = "Сохранены App Store ID из IPA, без привязки к аккаунту.";
+                });
             });
             On("DeleteSet", delegate
             {
@@ -497,17 +510,15 @@ namespace IpaDesktop
                 if (set == null) return;
                 Work("Добавление набора…", async delegate(CancellationToken ct)
                 {
-                    var available = await engine.LocalFiles.ListAsync();
+                    var apps = await Task.Run(delegate { return engine.AppSets.ResolveApps(set); }, ct);
                     ct.ThrowIfCancellationRequested();
-                    string[] missing;
-                    var rows = engine.AppSets.Resolve(set, available, out missing);
-                    foreach (var row in rows) installChosen.Add(row);
-                    RefreshInstallChosen();
-                    C<TextBlock>("SetStatus").Text = "Добавлено IPA: " + rows.Count + (missing.Length > 0 ? " · отсутствуют: " + String.Join(", ", missing) : "");
+                    // Saving also migrates legacy filename sets after all IDs were verified.
+                    engine.AppSets.SaveApps(set.Name, apps);
+                    LoadSets();
+                    view.AddSetApps(apps);
+                    C<TextBlock>("SetStatus").Text = "В очередь скачивания добавлено: " + apps.Length + ". Войдите в нужный Apple Account и нажмите «Скачать».";
                     view.RegisterPrivate(set.Name);
-                    Log("Набор «" + set.Name + "»: добавлено " + rows.Count + ", отсутствует " + missing.Length);
-                    if (missing.Length > 0) Log("Отсутствующие IPA: " + String.Join(", ", missing));
-                    if (rows.Count > 0) C<TabItem>("FilesTab").IsSelected = true;
+                    Log("Набор «" + set.Name + "»: добавлены App Store ID: " + apps.Length + ". Скачивание выполняется заново под текущим аккаунтом.");
                 });
             });
             LoadSets();
@@ -640,7 +651,8 @@ namespace IpaDesktop
             C<Button>("RetryInstalls").Content = "Повторить ошибки (" + failedInstalls.Count + ")";
             C<Button>("RetryInstalls").ToolTip = String.Join(Environment.NewLine, failedInstalls.Snapshot().Select(x => x.Name));
             C<Button>("ForgetInstallErrors").IsEnabled = !busy && failedInstalls.Count > 0;
-            C<Button>("SaveSet").IsEnabled = !busy && installChosen.Count > 0;
+            C<Button>("SaveSet").IsEnabled = !busy && view.SelectedDownloads().Count > 0;
+            C<Button>("SaveFileSet").IsEnabled = !busy && installChosen.Count > 0;
             C<Button>("UseSet").IsEnabled = !busy && C<ComboBox>("AppSets").SelectedItem != null;
             C<Button>("DeleteSet").IsEnabled = !busy && C<ComboBox>("AppSets").SelectedItem != null;
             C<Button>("SelectOld").IsEnabled = !busy && localRows.Any(x => x.IsOld);
@@ -918,6 +930,13 @@ namespace IpaDesktop
             On("Download", delegate { StartDownloads(chosen.Snapshot()); });
             On("RetryDownloads", delegate { StartDownloads(failedDownloads.Snapshot()); });
             On("ForgetDownloadErrors", delegate { failedDownloads.Clear(); ApplyActions(); });
+        }
+        internal List<DownloadItem> SelectedDownloads() { return chosen.Snapshot(); }
+        internal void AddSetApps(IEnumerable<AppRow> apps)
+        {
+            foreach (var app in apps) chosen.Add(app, null);
+            RefreshChosen();
+            C<TabItem>("SearchTab").IsSelected = true;
         }
         void StartDownloads(List<DownloadItem> rows)
         {

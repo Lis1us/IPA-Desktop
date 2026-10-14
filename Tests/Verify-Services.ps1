@@ -62,7 +62,10 @@ try {
  $item=New-Object IpaDesktop.DownloadItem;$item.ID='123';$item.Name='Example';$item.VersionID='456'
  $engine.ApplicationDownloads.DownloadAsync($item,[Threading.CancellationToken]::None).GetAwaiter().GetResult()|Out-Null
  $call=$runner.Calls[$runner.Calls.Count-1]
- if(($call -join ' ') -ne ('download -i 123 --purchase -o '+$engine.Downloads+' --external-version-id 456 --format json')){throw 'Download service changed CLI arguments'}
+ if(($call[0..4] -join ' ') -ne 'download -i 123 --purchase -o' -or ($call[6..9] -join ' ') -ne '--external-version-id 456 --format json' -or [IO.Path]::GetDirectoryName($call[5]) -ne $engine.Downloads -or [IO.Path]::GetExtension($call[5]) -ne '.ipa'){throw 'Download service changed CLI arguments'}
+ $firstDestination=$call[5]
+ $engine.ApplicationDownloads.DownloadAsync($item,[Threading.CancellationToken]::None).GetAwaiter().GetResult()|Out-Null
+ if($runner.Calls[$runner.Calls.Count-1][5] -eq $firstDestination){throw 'Separate account downloads can overwrite the same IPA'}
  $devices=$engine.Devices.FindAsync([Threading.CancellationToken]::None).GetAwaiter().GetResult()
  if($devices.Count -ne 2 -or $devices[0].Name -eq $devices[1].Name -or !$devices[0].Name.StartsWith('Test iPhone')){throw 'Device service lost names or duplicate-name disambiguation'}
  foreach($name in @('MAX.ipa','Telegram.ipa')){[IO.File]::WriteAllText((Join-Path $engine.Downloads $name),'fixture')}
@@ -187,9 +190,10 @@ try {
  $tabs.SelectedIndex=4;Pump
  $window.FindName('SetName').Text='Base fixture';Click 'SaveSet';Pump
  if($window.FindName('AppSets').Items.Count -ne 1){throw 'Set save was not connected'}
- Click 'ClearInstall';Pump
+ Click 'ClearInstall';Click 'ClearChosen';Pump
  Click 'UseSet';WaitIdle
- if($window.FindName('ChosenFiles').Items.Count -ne $expected -or $tabs.SelectedIndex -ne 1){throw 'Set did not add IPA files to installation queue'}
+ if($window.FindName('ChosenApps').Items.Count -ne 1 -or $window.FindName('ChosenApps').Items[0].ID -ne '333' -or $window.FindName('ChosenApps').Items[0].VersionID -ne $null -or $tabs.SelectedIndex -ne 0){throw 'Set did not add account-independent IDs with latest version to download queue'}
+ if($window.FindName('ChosenFiles').Items.Count -ne 0){throw 'ID set reused IPA from another account'}
  if(!$window.FindName('StorageSummary').Text.Contains('2') -or $window.FindName('StorageFiles').Items.Count -ne 2){throw 'Storage view was not populated'}
  if(!$window.FindName('ExportDiagnostics')){throw 'Diagnostic export control is missing'}
  Write-Host 'PASS: retry snapshot/version isolation, queue progress, saved set UI and storage UI'

@@ -83,8 +83,10 @@ namespace IpaDesktop
     public sealed class AppSet
     {
         public string Name { get; set; }
+        public AppRow[] Apps { get; set; }
+        // Read-only compatibility with sets saved before 0.1.18.
         public string[] Files { get; set; }
-        public string Label { get { return Name + " · " + (Files == null ? 0 : Files.Length) + " IPA"; } }
+        public string Label { get { return Name + " · " + (Apps == null ? (Files == null ? 0 : Files.Length) : Apps.Length) + " приложений" + (Apps == null ? " · прежний формат" : ""); } }
     }
 }
 
@@ -269,6 +271,7 @@ namespace IpaDesktop
 {
     public sealed class IpaDetails
     {
+        public string AppStoreID { get; set; }
         public string Account { get; set; }
         public string BundleID { get; set; }
         public string AppName { get; set; }
@@ -1224,9 +1227,15 @@ namespace IpaDesktop
         }
         public async Task DownloadAsync(DownloadItem item, CancellationToken ct)
         {
+            if (!AppSetStore.ValidId(item.ID)) throw new IOException("Некорректный App Store ID.");
+            Directory.CreateDirectory(folder);
+            // A new destination for every request: never reuse another account's IPA.
+            string title = new string((item.Name ?? "App").Where(c => !Char.IsControl(c) && Array.IndexOf(Path.GetInvalidFileNameChars(), c) < 0).Take(48).ToArray()).Trim().TrimEnd('.');
+            if (title.Length == 0) title = "App";
+            string destination = Path.Combine(folder, title + "-" + item.ID + "-" + Guid.NewGuid().ToString("N") + ".ipa");
             var arguments = new List<string>
             {
-                "download", "-i", item.ID, "--purchase", "-o", folder
+                "download", "-i", item.ID, "--purchase", "-o", destination
             };
             if (item.VersionID != null) arguments.AddRange(new[]
             {
@@ -1251,9 +1260,19 @@ namespace IpaDesktop
         static void Validate(AppSet set)
         {
             if (set == null || String.IsNullOrWhiteSpace(set.Name) || set.Name.Length > 64 || set.Name.Any(Char.IsControl)) throw new IOException("Название набора: от 1 до 64 символов.");
-            if (set.Files == null || set.Files.Length == 0 || set.Files.Length > 500) throw new IOException("В наборе должно быть от 1 до 500 IPA.");
-            foreach (var name in set.Files)
-                if (String.IsNullOrWhiteSpace(name) || name.Length > 255 || name.Any(Char.IsControl) || name.IndexOfAny(new[] { '/', '\\', ':' }) >= 0 || name.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 || !String.Equals(Path.GetExtension(name), ".ipa", StringComparison.OrdinalIgnoreCase)) throw new IOException("Набор содержит некорректное имя IPA.");
+            if (set.Apps != null)
+            {
+                if (set.Apps.Length == 0 || set.Apps.Length > 500) throw new IOException("В наборе должно быть от 1 до 500 приложений.");
+                foreach (var app in set.Apps)
+                    if (app == null || !ValidId(app.ID) || String.IsNullOrWhiteSpace(app.Name) || app.Name.Length > 320 || app.Name.Any(Char.IsControl)) throw new IOException("Набор содержит некорректный App Store ID или название.");
+                if (set.Apps.Select(x => x.ID).Distinct().Count() != set.Apps.Length) throw new IOException("App Store ID в наборе повторяются.");
+            }
+            else
+            {
+                if (set.Files == null || set.Files.Length == 0 || set.Files.Length > 500) throw new IOException("Пустой набор.");
+                foreach (var name in set.Files)
+                    if (String.IsNullOrWhiteSpace(name) || name.Length > 255 || name.Any(Char.IsControl) || name.IndexOfAny(new[] { '/', '\\', ':' }) >= 0 || name.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 || !String.Equals(Path.GetExtension(name), ".ipa", StringComparison.OrdinalIgnoreCase)) throw new IOException("Набор содержит некорректное имя IPA.");
+            }
         }
         public List<AppSet> Load()
         {
@@ -1274,33 +1293,44 @@ namespace IpaDesktop
             if (File.Exists(file)) File.Replace(file + ".tmp", file, null);
             else File.Move(file + ".tmp", file);
         }
-        public void Save(string name, IEnumerable<LocalRow> rows)
+        public static bool ValidId(string id)
         {
-            var names = rows.Select(row =>
-            {
-                var path = Path.GetFullPath(row.Path);
-                if (!String.Equals(Path.GetDirectoryName(path), folder, StringComparison.OrdinalIgnoreCase) || !File.Exists(path) || (File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0) throw new IOException("Наборы сохраняют только существующие IPA из папки приложения.");
-                return Path.GetFileName(path);
-            }).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
-            var set = new AppSet { Name = (name ?? "").Trim(), Files = names };
+            ulong value;
+            return !String.IsNullOrEmpty(id) && id.Length <= 20 && id.All(c => c >= '0' && c <= '9') && UInt64.TryParse(id, out value) && value > 0;
+        }
+        public void SaveApps(string name, IEnumerable<AppRow> apps)
+        {
+            var set = new AppSet { Name = (name ?? "").Trim(), Apps = apps.GroupBy(x => x.ID).Select(g => new AppRow { ID = g.Key, Name = g.First().Name }).ToArray() };
             Validate(set);
             var sets = Load();
             sets.RemoveAll(x => String.Equals(x.Name, set.Name, StringComparison.OrdinalIgnoreCase));
             sets.Add(set);
             Write(sets);
         }
+        public void Save(string name, IEnumerable<LocalRow> rows)
+        {
+            SaveApps(name, rows.Select(row => FromFile(Path.GetFileName(row.Path), row.Path)).ToArray());
+        }
+        AppRow FromFile(string name, string path)
+        {
+            path = Path.GetFullPath(path);
+            if (!String.Equals(Path.GetDirectoryName(path), folder, StringComparison.OrdinalIgnoreCase) || !File.Exists(path) || (File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0) throw new IOException("IPA отсутствует в папке приложения: " + name + ". Создайте набор из результатов поиска.");
+            var details = IpaMetadata.ReadDetails(path);
+            if (!ValidId(details.AppStoreID)) throw new IOException("В IPA нет App Store ID: " + name + ". Создайте набор из результатов поиска.");
+            return new AppRow { ID = details.AppStoreID, Name = details.AppName ?? ("Приложение " + details.AppStoreID) };
+        }
+        public AppRow[] ResolveApps(AppSet set)
+        {
+            Validate(set);
+            if (set.Apps != null) return set.Apps.Select(x => new AppRow { ID = x.ID, Name = x.Name }).ToArray();
+            // Convert only from IPA metadata, never infer IDs from filenames or reuse their account.
+            return set.Files.Select(name => FromFile(name, Path.Combine(folder, name))).GroupBy(x => x.ID).Select(g => g.First()).ToArray();
+        }
         public void Delete(string name)
         {
             var sets = Load();
             sets.RemoveAll(x => String.Equals(x.Name, name, StringComparison.OrdinalIgnoreCase));
             Write(sets);
-        }
-        public List<LocalRow> Resolve(AppSet set, IEnumerable<LocalRow> available, out string[] missing)
-        {
-            Validate(set);
-            var lookup = available.Where(x => String.Equals(Path.GetDirectoryName(Path.GetFullPath(x.Path)), folder, StringComparison.OrdinalIgnoreCase)).ToDictionary(x => Path.GetFileName(x.Path), StringComparer.OrdinalIgnoreCase);
-            missing = set.Files.Where(x => !lookup.ContainsKey(x)).ToArray();
-            return set.Files.Where(lookup.ContainsKey).Distinct(StringComparer.OrdinalIgnoreCase).Select(x => lookup[x]).ToList();
         }
     }
 }

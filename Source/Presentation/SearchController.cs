@@ -182,6 +182,13 @@ namespace IpaDesktop
             On("RetryDownloads", delegate { StartDownloads(failedDownloads.Snapshot()); });
             On("ForgetDownloadErrors", delegate { failedDownloads.Clear(); ApplyActions(); });
         }
+        internal List<DownloadItem> SelectedDownloads() { return chosen.Snapshot(); }
+        internal void AddSetApps(IEnumerable<AppRow> apps)
+        {
+            foreach (var app in apps) chosen.Add(app, null);
+            RefreshChosen();
+            C<TabItem>("SearchTab").IsSelected = true;
+        }
         void StartDownloads(List<DownloadItem> rows)
         {
             if (rows.Count == 0) throw new Exception("Добавьте приложения в выбранное.");

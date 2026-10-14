@@ -9,7 +9,7 @@ function NewIpa($folder,$name,$bundle,$version,$account,$binaryInfo=$null){
  $path=Join-Path $folder $name
  $zip=[IO.Compression.ZipFile]::Open($path,[IO.Compression.ZipArchiveMode]::Create)
  try{
-  $metadata='<?xml version="1.0"?><plist version="1.0"><dict><key>appleId</key><string>'+ $account +'</string><key>itemName</key><string>Example</string><key>softwareVersionBundleId</key><string>'+ $bundle +'</string><key>bundleVersion</key><string>0.1</string></dict></plist>'
+  $metadata='<?xml version="1.0"?><plist version="1.0"><dict><key>appleId</key><string>'+ $account +'</string><key>itemId</key><integer>1234567890</integer><key>itemName</key><string>Example</string><key>softwareVersionBundleId</key><string>'+ $bundle +'</string><key>bundleVersion</key><string>0.1</string></dict></plist>'
   $info='<?xml version="1.0"?><plist version="1.0"><dict><key>CFBundleIdentifier</key><string>'+ $bundle +'</string><key>CFBundleShortVersionString</key><string>'+ $version +'</string><key>CFBundleVersion</key><string>10</string></dict></plist>'
   foreach($pair in @(@('iTunesMetadata.plist',[Text.Encoding]::UTF8.GetBytes($metadata)),@('Payload/Example.app/Info.plist',$(if($binaryInfo){[Convert]::FromBase64String($binaryInfo)}else{[Text.Encoding]::UTF8.GetBytes($info)})))){
    $entry=$zip.CreateEntry($pair[0]);$stream=$entry.Open()
@@ -35,20 +35,36 @@ try{
  Assert (($rows|Where-Object Path -eq $latest).Version -eq '1.10') 'Info.plist did not override metadata fallback'
  Assert (($rows|Measure-Object Bytes -Sum).Sum -gt 0) 'Storage size is missing'
  $engine.AppSets.Save('Base',[IpaDesktop.LocalRow[]]@($rows|Where-Object { $_.Path -eq $old -or $_.Path -eq $latest }))
- $sets=$engine.AppSets.Load();Assert ($sets.Count -eq 1 -and $sets[0].Files.Count -eq 2) 'Set did not persist selected IPA names'
- $missing=$null;$resolved=$engine.AppSets.Resolve($sets[0],$rows,[ref]$missing)
- Assert ($resolved.Count -eq 2 -and $missing.Count -eq 0) 'Set did not resolve exact IPA files'
- [IO.File]::Delete($old)
- $now=$engine.LocalFiles.ListAsync().GetAwaiter().GetResult();$resolved=$engine.AppSets.Resolve($sets[0],$now,[ref]$missing)
- Assert ($resolved.Count -eq 1 -and $missing.Count -eq 1 -and $missing[0] -eq 'old.ipa') 'Missing set IPA was silently replaced'
+ $sets=$engine.AppSets.Load();Assert ($sets.Count -eq 1 -and $sets[0].Apps.Count -eq 1 -and $sets[0].Apps[0].ID -eq '1234567890') 'Set did not deduplicate App Store IDs'
+ $saved=[IO.File]::ReadAllText((Join-Path $temp 'AppSets.json'))
+ Assert (!$saved.Contains('old.ipa') -and !$saved.Contains('first@example.com') -and !$saved.Contains('1.10')) 'Set retained IPA paths, accounts or versions'
+ [IO.File]::Delete($old);[IO.File]::Delete($latest)
+ $resolved=$engine.AppSets.ResolveApps($sets[0]);Assert ($resolved.Count -eq 1 -and $resolved[0].ID -eq '1234567890') 'ID set depends on locally downloaded IPA'
+ # Legacy sets migrate by metadata, never by guessing a filename.
+ $legacy=New-Object IpaDesktop.AppSet;$legacy.Name='Legacy';$legacy.Files=@('other-account.ipa')
+ $resolved=$engine.AppSets.ResolveApps($legacy);Assert ($resolved[0].ID -eq '1234567890') 'Legacy metadata ID was not read'
+ $engine.AppSets.SaveApps($legacy.Name,[IpaDesktop.AppRow[]]$resolved)
+ $legacy.Files=@('absent.ipa');$rejected=$false
+ try{$engine.AppSets.ResolveApps($legacy)|Out-Null}catch{$rejected=$true}
+ Assert $rejected 'Missing legacy IPA was silently substituted'
  $bad=New-Object IpaDesktop.AppSet;$bad.Name='Bad';$bad.Files=@('..\outside.ipa');$rejected=$false
- try{$engine.AppSets.Resolve($bad,$rows,[ref]$missing)|Out-Null}catch{$rejected=$true}
+ try{$engine.AppSets.ResolveApps($bad)|Out-Null}catch{$rejected=$true}
  Assert $rejected 'Set path traversal was accepted'
+ $badApp=New-Object IpaDesktop.AppRow;$badApp.ID='../123';$badApp.Name='Invalid';$rejected=$false
+ try{$engine.AppSets.SaveApps('Bad',[IpaDesktop.AppRow[]]@($badApp))}catch{$rejected=$true}
+ Assert $rejected 'Invalid App Store ID accepted'
  $outside=New-Object IpaDesktop.LocalRow;$outside.Path=Join-Path $temp 'outside.ipa';[IO.File]::WriteAllText($outside.Path,'fixture')
  $rejected=$false;try{$engine.AppSets.Save('Outside',[IpaDesktop.LocalRow[]]@($outside))}catch{$rejected=$true}
  Assert $rejected 'Set accepted an IPA outside the downloads folder'
- $engine.AppSets.Delete('Base');Assert ($engine.AppSets.Load().Count -eq 0 -and [IO.File]::Exists($latest)) 'Deleting a set removed IPA files'
- Write-Host 'PASS: persisted IPA sets, missing files, path bounds, XML/binary metadata, numeric versions, account isolation and storage size'
+ $noID=Join-Path $engine.Downloads 'no-id.ipa';[IO.File]::WriteAllText($noID,'fixture')
+ $legacy.Files=@('no-id.ipa');$rejected=$false
+ try{$engine.AppSets.ResolveApps($legacy)|Out-Null}catch{$rejected=$true}
+ Assert $rejected 'Legacy filename was treated as an ID without metadata'
+ $integer=Join-Path $engine.Downloads 'integer.ipa';$zip=[IO.Compression.ZipFile]::Open($integer,[IO.Compression.ZipArchiveMode]::Create)
+ try{$stream=$zip.CreateEntry('iTunesMetadata.plist').Open();try{$bytes=[Convert]::FromBase64String('YnBsaXN0MDDSAQIDBFdhcHBsZUlkVml0ZW1JZF8QEWZpcnN0QGV4YW1wbGUuY29tEwAAAAGRtRRSCA0VHDAAAAAAAAABAQAAAAAAAAAFAAAAAAAAAAAAAAAAAAAAOQ==');$stream.Write($bytes,0,$bytes.Length)}finally{$stream.Dispose()}}finally{$zip.Dispose()}
+ Assert ([IpaDesktop.IpaMetadata]::ReadDetails($integer).AppStoreID -eq '6739530834') 'Binary integer itemId was lost or truncated to 32 bits'
+ $engine.AppSets.Delete('Base');Assert ($engine.AppSets.Load().Count -eq 1 -and [IO.File]::Exists($other)) 'Deleting a set removed IPA files'
+ Write-Host 'PASS: account-independent ID sets, metadata IDs, legacy conversion, missing files, path bounds, XML/binary integers and account-isolated storage'
  $progress=New-Object IpaDesktop.QueueProgress
  $progress.Begin('Скачивание',2,3,'Example')
  Assert ($progress.Feed('PROGRESS:50')) 'Machine-readable progress was ignored'

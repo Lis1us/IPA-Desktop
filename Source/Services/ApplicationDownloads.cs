@@ -25,9 +25,15 @@ namespace IpaDesktop
         }
         public async Task DownloadAsync(DownloadItem item, CancellationToken ct)
         {
+            if (!AppSetStore.ValidId(item.ID)) throw new IOException("Некорректный App Store ID.");
+            Directory.CreateDirectory(folder);
+            // A new destination for every request: never reuse another account's IPA.
+            string title = new string((item.Name ?? "App").Where(c => !Char.IsControl(c) && Array.IndexOf(Path.GetInvalidFileNameChars(), c) < 0).Take(48).ToArray()).Trim().TrimEnd('.');
+            if (title.Length == 0) title = "App";
+            string destination = Path.Combine(folder, title + "-" + item.ID + "-" + Guid.NewGuid().ToString("N") + ".ipa");
             var arguments = new List<string>
             {
-                "download", "-i", item.ID, "--purchase", "-o", folder
+                "download", "-i", item.ID, "--purchase", "-o", destination
             };
             if (item.VersionID != null) arguments.AddRange(new[]
             {
