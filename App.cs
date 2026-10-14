@@ -12,8 +12,24 @@ using System.Windows.Markup;
 using Microsoft.Win32;
 
 namespace IpaDesktop {
+ public static class RowClickSelection {
+  public static void Attach(DataGrid grid,Action<object> add) {
+   object pressed=null;Point origin=new Point();
+   grid.AddHandler(UIElement.PreviewMouseLeftButtonDownEvent,new System.Windows.Input.MouseButtonEventHandler(delegate(object sender,System.Windows.Input.MouseButtonEventArgs e) {
+    var row=ItemsControl.ContainerFromElement(grid,e.OriginalSource as DependencyObject) as DataGridRow;
+    pressed=row==null?null:row.Item;origin=e.GetPosition(grid);
+   }),true);
+   grid.AddHandler(UIElement.PreviewMouseLeftButtonUpEvent,new System.Windows.Input.MouseButtonEventHandler(delegate(object sender,System.Windows.Input.MouseButtonEventArgs e) {
+    var row=ItemsControl.ContainerFromElement(grid,e.OriginalSource as DependencyObject) as DataGridRow;
+    var distance=e.GetPosition(grid)-origin;
+    if(row!=null&&Object.ReferenceEquals(pressed,row.Item)&&Math.Abs(distance.X)<SystemParameters.MinimumHorizontalDragDistance&&Math.Abs(distance.Y)<SystemParameters.MinimumVerticalDragDistance)add(row.Item);
+    pressed=null;
+   }),true);
+  }
+ }
  public class Desktop {
   Window w;Engine engine;CancellationTokenSource cancellation;bool busy;bool setting;bool signedIn;
+  readonly InstallationSelection installChosen=new InstallationSelection();
   readonly DownloadSelection chosen=new DownloadSelection();
   string versionApp; Release guiRelease; bool exitingForUpdate;
   T C<T>(string name) where T:class {return w.FindName(name) as T;}
@@ -27,14 +43,19 @@ namespace IpaDesktop {
    C<Button>("ClearChosen").IsEnabled=!busy&&chosen.Count>0;
    C<Button>("Download").IsEnabled=!busy&&chosen.Count>0;
    C<ItemsControl>("ChosenApps").IsEnabled=!busy;
+   C<ItemsControl>("ChosenFiles").IsEnabled=!busy;
+   C<Button>("AddInstall").IsEnabled=!busy&&C<DataGrid>("Files").SelectedItems.Count>0;
+   C<Button>("ClearInstall").IsEnabled=!busy&&installChosen.Count>0;
+   C<Button>("InstallFiles").IsEnabled=!busy&&installChosen.Count>0&&C<ComboBox>("DeviceList").SelectedItem!=null;
    C<Button>("Login").IsEnabled=!busy&&!signedIn;
    C<Button>("Logout").IsEnabled=!busy&&signedIn;
    C<Button>("VersionInfo").IsEnabled=!busy&&C<DataGrid>("Apps").SelectedItems.Count==1;
   }
   async void Work(string title,Func<CancellationToken,Task> action) {
    if(busy)return;busy=true;cancellation=new CancellationTokenSource();
-   string[] buttons={"Login","AccountInfo","Logout","Search","Versions","VersionInfo","Download","RefreshFiles","ImportFile","DeleteFiles","Devices","InstallFiles","CheckUpdate","Rollback","CheckGuiUpdate","InstallGuiUpdate","AddChosen","ClearChosen"};
+   string[] buttons={"Login","AccountInfo","Logout","Search","Versions","VersionInfo","Download","RefreshFiles","ImportFile","DeleteFiles","Devices","InstallFiles","CheckUpdate","Rollback","CheckGuiUpdate","InstallGuiUpdate","AddChosen","ClearChosen","AddInstall","ClearInstall"};
    foreach(var name in buttons)C<Button>(name).IsEnabled=false;
+   C<ItemsControl>("ChosenFiles").IsEnabled=false;
    C<ItemsControl>("ChosenApps").IsEnabled=false;
    C<CheckBox>("CheckGuiUpdates").IsEnabled=false;C<CheckBox>("AutoUpdate").IsEnabled=false;C<Button>("Cancel").IsEnabled=true;C<ProgressBar>("Progress").IsIndeterminate=true;C<TextBlock>("Status").Text=title;Log(title);
    try {await action(cancellation.Token);C<TextBlock>("Status").Text="Готово";}
@@ -46,6 +67,12 @@ namespace IpaDesktop {
    C<ItemsControl>("ChosenApps").ItemsSource=chosen.Snapshot();
    C<TextBlock>("ChosenCount").Text=chosen.Count==0?"Добавьте приложения из результатов поиска":"Выбрано: "+chosen.Count+" · сохраняются при новом поиске";
    C<Button>("Download").Content="Скачать ("+chosen.Count+")";
+   ApplyActions();
+  }
+  void RefreshInstallChosen() {
+   C<ItemsControl>("ChosenFiles").ItemsSource=installChosen.Snapshot();
+   C<TextBlock>("InstallCount").Text=installChosen.Count==0?"ЛКМ по файлу — добавить к установке":"К установке: "+installChosen.Count;
+   C<Button>("InstallFiles").Content="Установить ("+installChosen.Count+")";
    ApplyActions();
   }
   List<AppRow> SelectedApps() {
@@ -63,6 +90,7 @@ namespace IpaDesktop {
     if(generation!=filesGeneration)return;
     C<DataGrid>("Files").ItemsSource=rows;
     foreach(var row in rows)if(selected.Contains(row.Path))C<DataGrid>("Files").SelectedItems.Add(row);
+    installChosen.Reconcile(rows);RefreshInstallChosen();
    } catch(Exception e) {if(generation==filesGeneration)Log("Не удалось обновить список IPA: "+e.Message);}
   }
   async Task Account(CancellationToken ct) {
@@ -145,6 +173,21 @@ namespace IpaDesktop {
      MessageBox.Show(w,row.Name+Environment.NewLine+Environment.NewLine+"Версия: "+(String.IsNullOrWhiteSpace(number)?"не указана":number)+Environment.NewLine+"Дата выпуска: "+(String.IsNullOrWhiteSpace(date)?"не указана":date)+Environment.NewLine+"ID версии: "+version+Environment.NewLine+"App Store ID: "+row.ID,"Сведения о версии",MessageBoxButton.OK,MessageBoxImage.Information);
     });
    });
+   RowClickSelection.Attach(C<DataGrid>("Apps"),delegate(object item) {
+    if(busy)return;var row=item as AppRow;if(row==null||chosen.Snapshot().Any(x=>x.ID==row.ID))return;
+    var combo=C<ComboBox>("VersionList");
+    chosen.Add(row,combo.SelectedIndex>0&&versionApp==row.ID?Convert.ToString(combo.SelectedItem):null);RefreshChosen();
+   });
+   RowClickSelection.Attach(C<DataGrid>("Files"),delegate(object item) {
+    if(busy)return;var row=item as LocalRow;if(row==null)return;installChosen.Add(row);RefreshInstallChosen();
+   });
+   C<DataGrid>("Files").SelectionChanged+=delegate {ApplyActions();};
+   C<ComboBox>("DeviceList").SelectionChanged+=delegate {ApplyActions();};
+   On("AddInstall",delegate {foreach(var row in C<DataGrid>("Files").SelectedItems.Cast<LocalRow>())installChosen.Add(row);RefreshInstallChosen();});
+   On("ClearInstall",delegate {installChosen.Clear();RefreshInstallChosen();});
+   C<ItemsControl>("ChosenFiles").AddHandler(Button.ClickEvent,new RoutedEventHandler(delegate(object sender,RoutedEventArgs e) {
+    var button=e.Source as Button;if(button==null||busy)return;installChosen.Remove(Convert.ToString(button.Tag));RefreshInstallChosen();e.Handled=true;
+   }));
    On("AddChosen",delegate {
     var rows=SelectedApps();var combo=C<ComboBox>("VersionList");
     string version=combo.SelectedIndex>0?Convert.ToString(combo.SelectedItem):null;
@@ -207,11 +250,29 @@ namespace IpaDesktop {
 
    On("ImportFile",delegate {var dialog=new OpenFileDialog{Filter="IPA files (*.ipa)|*.ipa",Multiselect=true};if(dialog.ShowDialog(w)!=true)return;var paths=dialog.FileNames;Work("Добавление IPA…",async delegate(CancellationToken ct){await Task.Run(delegate {foreach(var p in paths){ct.ThrowIfCancellationRequested();var target=Path.Combine(engine.Downloads,Path.GetFileName(p));if(String.Equals(Path.GetFullPath(p),Path.GetFullPath(target),StringComparison.OrdinalIgnoreCase))continue;if(File.Exists(target))throw new IOException("Файл уже существует: "+Path.GetFileName(p));File.Copy(p,target);}},ct);});});
    On("Devices",delegate {Work("Поиск устройств…",async delegate(CancellationToken ct){var r=await engine.Run(engine.Binary("idevice_id*.exe"),new[]{"-l"},ct,false,false);Engine.Ensure(r);var devices=r.Output.Split(new[]{'\r','\n'},StringSplitOptions.RemoveEmptyEntries).Where(x=>System.Text.RegularExpressions.Regex.IsMatch(x,"^[0-9A-Fa-f-]{20,}$")).ToList();C<ComboBox>("DeviceList").ItemsSource=devices;if(devices.Count>0)C<ComboBox>("DeviceList").SelectedIndex=0;else Log("Устройства не обнаружены. Проверьте USB, доверие и драйвер Apple.");});});
-   On("InstallFiles",delegate {string udid=Convert.ToString(C<ComboBox>("DeviceList").SelectedItem);var rows=C<DataGrid>("Files").SelectedItems.Cast<LocalRow>().ToList();if(String.IsNullOrEmpty(udid)||rows.Count==0)throw new Exception("Выберите устройство и IPA-файлы.");if(MessageBox.Show(w,"Установить выбранные IPA ("+rows.Count+") на устройство "+udid+"?","Установка",MessageBoxButton.YesNo)!=MessageBoxResult.Yes)return;Work("Установка IPA…",async delegate(CancellationToken ct){foreach(var row in rows){Log("Установка "+row.Name);Engine.Ensure(await engine.Run(engine.Binary("ideviceinstaller*.exe"),new[]{"--udid",udid,"install",row.Path},ct,false,true));}});});
+   On("InstallFiles",delegate {
+    string udid=Convert.ToString(C<ComboBox>("DeviceList").SelectedItem);var rows=installChosen.Snapshot();
+    if(String.IsNullOrEmpty(udid)||rows.Count==0)throw new Exception("Выберите устройство и добавьте IPA к установке.");
+    string summary=String.Join(Environment.NewLine,rows.Take(8).Select(x=>x.Name));
+    if(rows.Count>8)summary+=Environment.NewLine+"… и ещё "+(rows.Count-8);
+    if(MessageBox.Show(w,"Установить IPA ("+rows.Count+") на устройство "+udid+"?"+Environment.NewLine+Environment.NewLine+summary,"Установка",MessageBoxButton.YesNo,MessageBoxImage.Question,MessageBoxResult.No)!=MessageBoxResult.Yes)return;
+    Work("Установка IPA…",async delegate(CancellationToken ct) {
+     var failed=new List<string>();int index=0;
+     foreach(var row in rows) {
+      ct.ThrowIfCancellationRequested();index++;C<TextBlock>("Status").Text="Установка "+index+" из "+rows.Count+": "+row.Name;Log("Установка "+row.Name);
+      try {
+       if(!File.Exists(row.Path))throw new IOException("IPA-файл больше не существует.");
+       Engine.Ensure(await engine.Run(engine.Binary("ideviceinstaller*.exe"),new[]{"--udid",udid,"install",row.Path},ct,false,true));
+       installChosen.Remove(row.Path);RefreshInstallChosen();
+      }catch(OperationCanceledException){throw;}catch(Exception e){failed.Add(row.Name);Log("Ошибка установки "+row.Name+": "+e.Message);}
+     }
+     if(failed.Count>0)throw new Exception("Не удалось установить: "+String.Join(", ",failed)+". Доступные IPA остались в выбранном для повтора.");
+    });
+   });
    w.Closing+=delegate(object sender,System.ComponentModel.CancelEventArgs e){if(busy){e.Cancel=true;MessageBox.Show(w,"Сначала отмените текущую операцию и дождитесь её завершения.","Выполняется операция");}};
    ApplyActions();
    w.Loaded+=delegate {
-    Log("IPA Desktop 0.1.7. Файлы: "+engine.Downloads);
+    Log("IPA Desktop 0.1.8. Файлы: "+engine.Downloads);
     Work("Проверка движка и сохранённого входа…",async delegate(CancellationToken ct) {
      if(engine.Settings.CheckGuiUpdates) {
       try {await CheckGui(ct);}catch(OperationCanceledException){if(ct.IsCancellationRequested)throw;Log("Проверка IPA Desktop: время ожидания истекло.");}catch(Exception e){Log("Проверка IPA Desktop: "+e.Message);}

@@ -37,6 +37,24 @@ namespace IpaDesktop {
   public void Clear() {items.Clear();}
  }
  public class LocalRow { public string AppleAccount {get;set;} public string Name {get;set;} public string Size {get;set;} public string Path {get;set;} }
+ public class InstallationSelection {
+  readonly List<LocalRow> items=new List<LocalRow>();
+  static LocalRow Copy(LocalRow row) {return new LocalRow{Name=row.Name,Path=row.Path,Size=row.Size,AppleAccount=row.AppleAccount};}
+  public int Count {get {return items.Count;}}
+  public void Add(LocalRow row) {
+   if(row==null||String.IsNullOrWhiteSpace(row.Path))throw new ArgumentException("Файл не выбран.");
+   if(!items.Any(x=>String.Equals(x.Path,row.Path,StringComparison.OrdinalIgnoreCase)))items.Add(Copy(row));
+  }
+  public List<LocalRow> Snapshot() {return items.Select(Copy).ToList();}
+  public void Remove(string path) {items.RemoveAll(x=>String.Equals(x.Path,path,StringComparison.OrdinalIgnoreCase));}
+  public void Clear() {items.Clear();}
+  public void Reconcile(IEnumerable<LocalRow> files) {
+   var available=files.ToDictionary(x=>x.Path,StringComparer.OrdinalIgnoreCase);
+   for(int i=items.Count-1;i>=0;i--) {
+    LocalRow row;if(!available.TryGetValue(items[i].Path,out row))items.RemoveAt(i);else items[i]=Copy(row);
+   }
+  }
+ }
  public static class JsonCodec {
   static JavaScriptSerializer Serializer {get {return new JavaScriptSerializer {MaxJsonLength=16000000};}}
   public static string Serialize(object value) {return Serializer.Serialize(value);}
@@ -53,7 +71,7 @@ namespace IpaDesktop {
   static HttpClient CreateHttp() {
    ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
    var h = new HttpClient(); h.Timeout = TimeSpan.FromMinutes(15);
-   h.DefaultRequestHeaders.UserAgent.ParseAdd("IPA-Desktop/0.1.7"); return h;
+   h.DefaultRequestHeaders.UserAgent.ParseAdd("IPA-Desktop/0.1.8"); return h;
   }
   public Engine(string root) {
    Root = root; Downloads = Path.Combine(Root,"Apps"); Directory.CreateDirectory(Downloads);

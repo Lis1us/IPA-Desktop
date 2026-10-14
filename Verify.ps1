@@ -36,5 +36,20 @@ try {
  $selection.Clear()
  if($selection.Count -ne 0){throw 'Clear failed'}
  Write-Host 'PASS: selection across searches, ID deduplication, individual versions, immutable snapshots and removal'
+ $install=New-Object IpaDesktop.InstallationSelection
+ $ipaA=New-Object IpaDesktop.LocalRow;$ipaA.Name='A.ipa';$ipaA.Path='C:\Apps\A.ipa';$ipaA.AppleAccount='a@example.com'
+ $ipaB=New-Object IpaDesktop.LocalRow;$ipaB.Name='B.ipa';$ipaB.Path='C:\Apps\B.ipa';$ipaB.AppleAccount='b@example.com'
+ $install.Add($ipaA);$install.Add($ipaB);$install.Add($ipaA)
+ if($install.Count -ne 2){throw 'Duplicate installation entry'}
+ $snapshot=$install.Snapshot();$snapshot[0].AppleAccount='changed'
+ if($install.Snapshot()[0].AppleAccount -ne 'a@example.com'){throw 'Installation snapshot is shared'}
+ $ipaA.AppleAccount='updated@example.com'
+ $install.Reconcile([IpaDesktop.LocalRow[]]@($ipaA,$ipaB))
+ if($install.Count -ne 2 -or $install.Snapshot()[0].AppleAccount -ne $ipaA.AppleAccount){throw 'Refresh lost selection or metadata'}
+ $install.Reconcile([IpaDesktop.LocalRow[]]@($ipaB))
+ if($install.Count -ne 1 -or $install.Snapshot()[0].Name -ne 'B.ipa'){throw 'Removed file still queued'}
+ $install.Remove('c:\apps\b.ipa')
+ if($install.Count -ne 0){throw 'Path removal must ignore case on Windows'}
+ Write-Host 'PASS: install queue deduplication, snapshots, refresh, missing files and removal'
  Write-Host 'PASS: settings, JSON, rollback, preserved downloads, WPF XAML' -ForegroundColor Green
 }finally{if(Test-Path $temp){Remove-Item -LiteralPath $temp -Recurse -Force}}

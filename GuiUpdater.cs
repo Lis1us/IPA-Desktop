@@ -11,7 +11,7 @@ using System.Threading.Tasks;
 using System.Diagnostics;
 namespace IpaDesktop {
  public static class GuiUpdater {
-  public const string CurrentVersion="0.1.7";
+  public const string CurrentVersion="0.1.8";
   public static readonly string[] PackageFiles={"IPA-Desktop.exe","IPA-Desktop.exe.config","MainWindow.xaml","App.ico","Update-App.ps1","Core.cs","App.cs","IpaMetadata.cs","WindowTheme.cs","GuiUpdater.cs","Build.cmd","Start.cmd","README.md","LICENSE.txt","Verify.ps1","Verify-IpaMetadata.ps1","Verify-Updater.ps1"};
   public static Version ParseVersion(string tag) {
    Version v;

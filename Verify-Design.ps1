@@ -18,6 +18,12 @@ try {
  $window.FindName('ChosenApps').ItemsSource=$chosen.Snapshot()
  $window.FindName('ChosenCount').Text='Selected: '+$chosen.Count
  $window.FindName('Download').Content='Download ('+$chosen.Count+')'
+ $localRows=@()
+ foreach($name in @('MAX.ipa','Telegram.ipa')) {
+  $file=New-Object IpaDesktop.LocalRow;$file.Name=$name;$file.Path='C:\Apps\'+$name;$file.AppleAccount='example@icloud.com';$file.Size='100 MB';$localRows+=$file
+ }
+ $window.FindName('Files').ItemsSource=$localRows
+ $window.FindName('ChosenFiles').ItemsSource=$localRows
  $window.Show()
  [IpaDesktop.WindowTheme]::Apply($window)
  $window.Dispatcher.Invoke([Action]{},[Windows.Threading.DispatcherPriority]::ApplicationIdle);$window.UpdateLayout()
@@ -32,10 +38,29 @@ try {
  }
  $tabs=FindTabs $window
  foreach($index in 0..3){$tabs.SelectedIndex=$index;$window.Dispatcher.Invoke([Action]{},[Windows.Threading.DispatcherPriority]::ApplicationIdle);$window.UpdateLayout()}
+ # Verify the same routed left-click binding used by both application grids.
+ foreach($pair in @(@('Apps',0),@('Files',1))) {
+  $tabs.SelectedIndex=$pair[1]
+  $window.Dispatcher.Invoke([Action]{},[Windows.Threading.DispatcherPriority]::ApplicationIdle);$window.UpdateLayout()
+  $grid=$window.FindName($pair[0]);$row=$grid.ItemContainerGenerator.ContainerFromIndex(0)
+  if(!$row){throw 'Missing visible data row'}
+  $script:clickedItem=$null
+  [IpaDesktop.RowClickSelection]::Attach($grid,[Action[object]]{param($item) $script:clickedItem=$item})
+  foreach($eventId in @([Windows.UIElement]::PreviewMouseLeftButtonDownEvent,[Windows.UIElement]::PreviewMouseLeftButtonUpEvent)) {
+   $mouse=New-Object Windows.Input.MouseButtonEventArgs([Windows.Input.Mouse]::PrimaryDevice,0,[Windows.Input.MouseButton]::Left)
+   $mouse.RoutedEvent=$eventId;$mouse.Source=$row
+   $grid.RaiseEvent($mouse)
+  }
+  if(![object]::ReferenceEquals($script:clickedItem,$grid.Items[0])){throw 'Left click did not add the correct data row'}
+ }
+ Write-Host 'PASS: routed left-click selection on search and local IPA grids'
  $tabs.SelectedIndex=0
  $window.Width=940;$window.Height=720;$window.Dispatcher.Invoke([Action]{},[Windows.Threading.DispatcherPriority]::ApplicationIdle);$window.UpdateLayout()
  Write-Host ('Minimum layout: '+$window.FindName('Apps').ActualWidth+' x '+$window.FindName('Apps').ActualHeight)
  $minimumHeight=$window.FindName('Apps').ActualHeight
+ $tabs.SelectedIndex=1;$window.Dispatcher.Invoke([Action]{},[Windows.Threading.DispatcherPriority]::ApplicationIdle);$window.UpdateLayout()
+ if($window.FindName('Files').ActualHeight -lt 80){throw 'Files table collapsed at minimum size'}
+ $tabs.SelectedIndex=0;$window.Dispatcher.Invoke([Action]{},[Windows.Threading.DispatcherPriority]::ApplicationIdle);$window.UpdateLayout()
  $window.FindName('VersionList').IsDropDownOpen=$true;$window.Dispatcher.Invoke([Action]{},[Windows.Threading.DispatcherPriority]::ApplicationIdle);$window.UpdateLayout()
  $window.FindName('VersionList').IsDropDownOpen=$false
  $window.Width=1160;$window.Height=800;$window.Dispatcher.Invoke([Action]{},[Windows.Threading.DispatcherPriority]::ApplicationIdle);$window.UpdateLayout()
