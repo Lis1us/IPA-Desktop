@@ -66,6 +66,10 @@ jobs:
         run: |
           & powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File Tests/Verify-Services.ps1
           if ($LASTEXITCODE -ne 0) { throw 'Refactored services or controllers failed' }
+      - name: Verify direct ipatool migration and actual Windows release
+        run: |
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File Tests/Verify-Engine.ps1 -Live
+          if ($LASTEXITCODE -ne 0) { throw 'Direct upstream engine or migration failed' }
       - name: Package
         run: |
           & powershell.exe -NoProfile -ExecutionPolicy Bypass -File Scripts/Package.ps1

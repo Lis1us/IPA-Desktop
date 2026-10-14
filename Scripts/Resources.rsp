@@ -16,3 +16,4 @@
 /resource:Tests\Verify-Services.ps1,IPA.Layout.Tests.Verify-Services.ps1
 /resource:Tests\Verify-Layout.ps1,IPA.Layout.Tests.Verify-Layout.ps1
 /resource:Tests\Fixtures\Legacy-Update-App.ps1,IPA.Layout.Tests.Fixtures.Legacy-Update-App.ps1
+/resource:Tests\Verify-Engine.ps1,IPA.Layout.Tests.Verify-Engine.ps1

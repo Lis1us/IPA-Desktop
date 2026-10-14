@@ -7,6 +7,10 @@ namespace IpaDesktop
             AutoUpdate = true;
             CheckGuiUpdates = true;
         }
+        public string Source { get; set; }
+        public string PreviousSource { get; set; }
+        public string DeviceCurrent { get; set; }
+        public string DeviceVersion { get; set; }
         public string Current
         {
             get;

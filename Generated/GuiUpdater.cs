@@ -17,7 +17,7 @@ namespace IpaDesktop
 {
     public static class GuiUpdater
     {
-        public const string CurrentVersion = "0.1.13";
+        public const string CurrentVersion = "0.1.14";
         public static readonly string[] PackageFiles =
         {
             "IPA-Desktop.exe",
@@ -42,7 +42,7 @@ namespace IpaDesktop
             "Tests/Verify-IpaMetadata.ps1",
             "Tests/Verify-Updater.ps1",
             "Tests/Verify-Design.ps1",
-            "Tests/Verify-Services.ps1",
+            "Tests/Verify-Services.ps1", "Tests/Verify-Engine.ps1",
             "Tests/Verify-Layout.ps1",
             "Tests/Fixtures/Legacy-Update-App.ps1"
         };

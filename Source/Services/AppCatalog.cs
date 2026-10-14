@@ -51,7 +51,7 @@ namespace IpaDesktop
             var folder = Path.Combine(Root, "Files");
             Directory.CreateDirectory(folder);
             var cache = Path.Combine(folder, "AppsList.txt");
-            if (!File.Exists(cache))
+            if (!File.Exists(cache) && !String.IsNullOrEmpty(store.Settings.Current) && Directory.Exists(locator.CurrentRoot))
             {
                 var bundled = Directory.GetFiles(locator.CurrentRoot, "AppsList.txt", SearchOption.AllDirectories).FirstOrDefault();
                 if (bundled != null) File.Copy(bundled, cache);

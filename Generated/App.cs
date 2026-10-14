@@ -291,7 +291,7 @@ namespace IpaDesktop
             ApplyActions();
             w.Loaded += delegate
             {
-                Log("IPA Desktop 0.1.13. Файлы: " + engine.Downloads);
+                Log("IPA Desktop 0.1.14. Файлы: " + engine.Downloads);
                 if (!checkAtStartup) return;
                 Work("Проверка движка и сохранённого входа…", async delegate(CancellationToken ct)
                 {
@@ -926,7 +926,7 @@ namespace IpaDesktop
             });
             On("OpenRelease", delegate
             {
-                Process.Start(new ProcessStartInfo("https://github.com/kda2495/IPA_Downloader/releases")
+                Process.Start(new ProcessStartInfo("https://github.com/Sorvigolova/ipatool/releases")
                 {
                     UseShellExecute = true
                 });
@@ -979,7 +979,7 @@ namespace IpaDesktop
         public async Task Update(CancellationToken ct, bool startup)
         {
             var release = await engine.Check(ct);
-            if (String.Equals(release.tag_name, engine.Settings.Version, StringComparison.Ordinal))
+            if (engine.Settings.Source == EngineUpdater.SourceRepository && String.Equals(release.tag_name, engine.Settings.Version, StringComparison.Ordinal) && !String.IsNullOrEmpty(engine.Settings.DeviceCurrent))
             {
                 Log("Установлен актуальный релиз " + release.tag_name);
                 return;

@@ -6,7 +6,7 @@
 
 **Поиск, скачивание и установка приложений для iPhone — в одном окне Windows.**
 
-IPA Desktop — независимый графический интерфейс на C# и WPF. Программа использует утилиты и каталог из [IPA Downloader](https://github.com/kda2495/IPA_Downloader), работает с Apple Account через ipatool и устанавливает IPA на подключённый iPhone через ideviceinstaller.
+IPA Desktop — независимый графический интерфейс на C# и WPF. Программа получает ipatool напрямую из [Sorvigolova/ipatool](https://github.com/Sorvigolova/ipatool), использует каталог и Windows-инструменты установки из [IPA Downloader](https://github.com/kda2495/IPA_Downloader), работает с Apple Account через ipatool и устанавливает IPA на подключённый iPhone через ideviceinstaller.
 
 **[Скачать актуальную сборку →](https://github.com/Lis1us/IPA-Desktop/releases/latest)** · [История изменений](https://github.com/Lis1us/IPA-Desktop/releases) · [Сообщить об ошибке](https://github.com/Lis1us/IPA-Desktop/issues)
 
@@ -130,13 +130,17 @@ IPA Desktop — независимый графический интерфейс
 | Блок | Как обновить |
 |---|---|
 | **IPA Desktop** | «Проверить версию» → «Обновить до …» → подтвердить перезапуск |
-| **Движок IPA Downloader** | «Проверить обновления» → подтвердить установку нового движка |
+| **Движок ipatool** | «Проверить обновления» → подтвердить установку нового движка |
 
 Проверки при запуске можно включать и отключать отдельно.
 
+Движок загружается из официальных Releases `Sorvigolova/ipatool` (архив `windows_amd64_ipatool-cpp.zip`). Каталог IPA Downloader обновляется отдельно при поиске, с сохранённой копией на случай недоступности сети.
+
+При переходе существующий комплект для iPhone сохраняется. На новой установке архив IPA Downloader временно скачивается, но сохраняются только `idevice_id`, `ideviceinfo`, `ideviceinstaller` и их DLL. Его скрипты и ipatool не используются. Комплект для iPhone остаётся отдельным от обновлений и отката ipatool. Скачанные IPA, пользовательский каталог и сессия аккаунта сохраняются; если новая версия ipatool потребует повторного входа, выполните его в консоли.
+
 При обновлении IPA Desktop архив проверяется по размеру и SHA-256, сохраняется резервная копия заменяемых файлов, затем программа перезапускается. При ошибке копирования выполняется откат. Скачанные IPA и настройки сохраняются.
 
-**«Откатить движок»** возвращает предыдущую версию IPA Downloader и отключает его автообновление. Старые папки движка автоматически не удаляются.
+**«Откатить движок»** возвращает предыдущую версию ipatool (при первом переходе — старый комплект IPA Downloader) и отключает его автообновление. Старые папки движка автоматически не удаляются.
 
 Если установленная версия не поддерживает обновление из интерфейса, скачайте актуальный ZIP вручную и распакуйте в отдельную папку.
 
@@ -209,8 +213,8 @@ GitHub Actions проверяет код на Windows, собирает ZIP и �
 |---|---|
 | [Lis1us](https://github.com/Lis1us) | Проект IPA Desktop и сопровождение |
 | OpenAI Codex | Помощь в разработке, рефакторинге и проверках оболочки |
-| [kda2495 / IPA Downloader](https://github.com/kda2495/IPA_Downloader) | Источник комплекта утилит и каталога приложений |
-| [Sorvigolova / ipatool](https://github.com/Sorvigolova/ipatool) | Поиск и скачивание приложений из App Store |
+| [kda2495 / IPA Downloader](https://github.com/kda2495/IPA_Downloader) | Каталог приложений и комплект Windows-инструментов установки |
+| [Sorvigolova / ipatool](https://github.com/Sorvigolova/ipatool) | Прямой источник Windows-релизов ipatool; вход, поиск, версии и скачивание приложений |
 | [libimobiledevice](https://github.com/libimobiledevice/libimobiledevice) | Поиск подключённых устройств и чтение информации о них |
 | [ideviceinstaller](https://github.com/libimobiledevice/ideviceinstaller) | Установка IPA на устройства |
 

@@ -15,12 +15,20 @@ Engine — фасад: собирает сервисы и сохраняет с�
 
 Модели состояния совместимы с state.json прежних версий. Имена свойств release/asset соответствуют GitHub API. Проверка обновлений GUI сохраняется при установке и откате движка.
 
+## Источники инструментов
+
+EngineUpdater получает Windows x64 ZIP напрямую из Releases Sorvigolova/ipatool и проверяет запуск CLI до переключения настроек. State.Source и PreviousSource различают источники даже при совпадении номеров версий. Старые настройки без этих полей продолжают работать с прежним комплектом.
+
+DeviceCurrent и DeviceVersion указывают отдельный комплект для установки на iPhone. При миграции используется существующий комплект; при чистой установке из IPA_Downloader копируются только три Windows EXE и DLL из их папки. Обновление и откат ipatool сохраняют DeviceCurrent. AppCatalog независимо получает AppsList.txt из IPA_Downloader и использует локальную копию при ошибке сети.
+
+Verify-Engine.ps1 проверяет разделение источников, избирательный импорт, сохранение настроек и откат. С -Live он скачивает настоящие опубликованные Windows-архивы и запускает только справку ipatool, без входа в Apple Account и скачивания приложений.
+
 ## Изменение и сборка
 
 1. Изменить класс в Source.
 2. Выполнить powershell -NoProfile -ExecutionPolicy Bypass -File Scripts/Sync-Sources.ps1.
 3. Выполнить Build.cmd.
-4. Запустить проверки из Tests: Verify.ps1, Verify-IpaMetadata.ps1, Verify-Updater.ps1, Verify-Design.ps1, Verify-Services.ps1 и Verify-Layout.ps1. Для проверки структуры предварительно создать ZIP через Scripts/Package.ps1. WPF-проверки запускать в Windows PowerShell с -STA.
+4. Запустить проверки из Tests: Verify.ps1, Verify-IpaMetadata.ps1, Verify-Updater.ps1, Verify-Design.ps1, Verify-Services.ps1, Verify-Engine.ps1 и Verify-Layout.ps1. Для проверки структуры предварительно создать ZIP через Scripts/Package.ps1. WPF-проверки запускать в Windows PowerShell с -STA.
 5. Для выпуска повысить GuiUpdater.CurrentVersion и версию в MainWindow.xaml, добавить changelogs/vX.Y.Z.md и синхронизировать исходники.
 
 Файлы Generated/Core.cs, Generated/App.cs, Generated/IpaMetadata.cs, Generated/WindowTheme.cs и Generated/GuiUpdater.cs генерируются из Source. Их можно компилировать прежним Build.cmd без дополнительных пакетов. Для совместимости с обновлением 0.1.6–0.1.12 ZIP содержит служебные копии прежних путей. При первом запуске InstallationLayout раскладывает ресурсы по новым папкам и убирает только копии, совпадающие с содержимым текущей сборки. Изменённые пользователем файлы сохраняются. Следующие обновления работают напрямую с новой структурой.

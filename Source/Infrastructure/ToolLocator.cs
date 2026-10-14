@@ -35,20 +35,20 @@ namespace IpaDesktop
         {
             this.store = store;
         }
-        public string CurrentRoot
+        public string VersionRoot(string version)
         {
-            get
-            {
-                if (String.IsNullOrEmpty(Settings.Current)) throw new Exception("Сначала установите движок: кнопка «Проверить обновления».");
-                var p = Path.GetFullPath(Path.Combine(Root, "Versions", Settings.Current));
-                var prefix = Path.GetFullPath(Path.Combine(Root, "Versions")) + Path.DirectorySeparatorChar;
-                if (!p.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) throw new Exception("Некорректный путь движка.");
-                return p;
-            }
+            if (String.IsNullOrEmpty(version)) throw new Exception("Сначала установите инструменты: кнопка «Проверить обновления».");
+            var p = Path.GetFullPath(Path.Combine(Root, "Versions", version));
+            var prefix = Path.GetFullPath(Path.Combine(Root, "Versions")) + Path.DirectorySeparatorChar;
+            if (!p.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) throw new Exception("Некорректный путь инструментов.");
+            return p;
         }
+        public string CurrentRoot { get { return VersionRoot(Settings.Current); } }
+        public string DeviceRoot { get { return VersionRoot(Settings.DeviceCurrent ?? Settings.Current); } }
         public string Find(string pattern)
         {
-            var files = Directory.GetFiles(CurrentRoot, pattern, SearchOption.AllDirectories).Where(x => x.Replace('\\', '/').Contains("/windows_amd64/")).ToArray();
+            var root = pattern.StartsWith("ipatool", StringComparison.OrdinalIgnoreCase) ? CurrentRoot : DeviceRoot;
+            var files = Directory.GetFiles(root, pattern, SearchOption.AllDirectories).Where(x => x.Replace('\\', '/').Contains("/windows_amd64/")).ToArray();
             if (files.Length != 1) throw new Exception("Не найдена однозначная Windows-утилита: " + pattern);
             return files[0];
         }
