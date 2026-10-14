@@ -30,7 +30,7 @@ try {
  $tabs.SelectedIndex=0
  $window.Width=940;$window.Height=650;$window.Dispatcher.Invoke([Action]{},[Windows.Threading.DispatcherPriority]::ApplicationIdle);$window.UpdateLayout()
  Write-Host ('Minimum layout: '+$window.FindName('Apps').ActualWidth+' x '+$window.FindName('Apps').ActualHeight)
- if($window.FindName('Apps').ActualHeight -lt 80){throw 'Application table collapsed at minimum size'}
+ $minimumHeight=$window.FindName('Apps').ActualHeight
  $window.FindName('VersionList').IsDropDownOpen=$true;$window.Dispatcher.Invoke([Action]{},[Windows.Threading.DispatcherPriority]::ApplicationIdle);$window.UpdateLayout()
  $window.FindName('VersionList').IsDropDownOpen=$false
  $window.Width=1160;$window.Height=800;$window.Dispatcher.Invoke([Action]{},[Windows.Threading.DispatcherPriority]::ApplicationIdle);$window.UpdateLayout()
@@ -43,5 +43,6 @@ try {
  $encoder.Save($stream)
  Write-Host ('IPA_PREVIEW:'+ [Convert]::ToBase64String($stream.ToArray()))
  $stream.Dispose()
+ if($minimumHeight -lt 80){throw 'Application table collapsed at minimum size'}
  Write-Host 'PASS: all tab templates, dark combo popup, minimum window layout, icon and DWM initialization'
 }finally{$window.Close()}
