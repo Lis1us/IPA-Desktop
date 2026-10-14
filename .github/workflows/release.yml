@@ -46,6 +46,7 @@ jobs:
           $files = @('IPA-Desktop.exe', 'IPA-Desktop.exe.config', 'MainWindow.xaml', 'Core.cs', 'IpaMetadata.cs', 'App.cs', 'Build.cmd', 'Start.cmd', 'Verify.ps1', 'Verify-IpaMetadata.ps1', 'README.md', 'LICENSE.txt')
           Compress-Archive -LiteralPath $files -DestinationPath "IPA-Desktop-$env:IPA_VERSION-Windows.zip"
       - name: Publish releases
+        shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           # Preserve the previously distributed 0.1.4 archive during migration.
