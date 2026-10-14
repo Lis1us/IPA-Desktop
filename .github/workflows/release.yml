@@ -36,6 +36,7 @@ jobs:
           $xaml = Get-Content MainWindow.xaml -Raw -Encoding UTF8
           if ($xaml -notmatch 'Title="IPA Desktop[^"\r\n]*?(\d+\.\d+\.\d+)"') { throw 'Missing version in window title' }
           "IPA_VERSION=$($Matches[1])" >> $env:GITHUB_ENV
+          if (!(Test-Path "changelogs/v$($Matches[1]).md")) { throw 'Write the changelog before publishing a version.' }
       - name: Build
         shell: cmd
         run: call Build.cmd < nul
@@ -72,6 +73,6 @@ jobs:
               continue
             }
             $latest = if ($version -eq $env:IPA_VERSION) { '--latest' } else { '--latest=false' }
-            gh release create $tag $archive.FullName --target $env:GITHUB_SHA --title "IPA Desktop $version" --notes "Windows 10/11 x64. Download the ZIP, extract all files and run IPA-Desktop.exe. Requires .NET Framework 4.6 or later." $latest
+            gh release create $tag $archive.FullName --target $env:GITHUB_SHA --title "IPA Desktop $version" --notes-file "changelogs/$tag.md" $latest
             if ($LASTEXITCODE -ne 0) { throw "Failed to publish $tag" }
           }
