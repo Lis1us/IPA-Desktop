@@ -1,0 +1,13 @@
+*.exe
+*.pdb
+*.zip
+*.ipa
+Apps/
+Versions/
+.ipatool/
+state.json
+*.log
+.vs/
+bin/
+obj/
+!downloads/*.zip
