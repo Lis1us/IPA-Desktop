@@ -2,7 +2,8 @@ from pathlib import Path
 import json, os, re, shutil, subprocess, zipfile
 root=Path.cwd(); prefix=root/'device-build/prefix'; out=root/'device-build/package'
 bins=out/'windows_amd64'; bins.mkdir(parents=True,exist_ok=True)
-mingw=Path('/mingw64/bin'); system=Path('/c/Windows/System32')
+mingw=Path(subprocess.check_output(['cygpath','-w','/mingw64'],text=True).strip())/'bin'
+system=Path(os.environ['SYSTEMROOT'])/'System32'
 queue=[prefix/'bin'/n for n in ('idevice_id.exe','ideviceinfo.exe','ideviceinstaller.exe')]
 seen=set()
 while queue:
@@ -23,7 +24,7 @@ for project in (root/'device-build/source').iterdir():
     for name in ('COPYING','COPYING.LESSER','COPYING.GPLv3','LICENSE','LICENSE.md','LICENSE.txt','COPYING.LGPLv2.1'):
         if (project/name).is_file(): shutil.copy2(project/name,target/name)
     if not list(target.iterdir()): raise RuntimeError(f'Missing license for {project.name}')
-shutil.copytree('/mingw64/share/licenses',licenses/'MSYS2',dirs_exist_ok=True)
+shutil.copytree(mingw.parent/'share/licenses',licenses/'MSYS2',dirs_exist_ok=True)
 shutil.copy2('Tools/DeviceTools/pins.json',out/'sources.json')
 shutil.copy2('Tools/DeviceTools/README.md',out/'README.md')
 shutil.copy2('device-build/msys2-packages.txt',out/'msys2-packages.txt')
