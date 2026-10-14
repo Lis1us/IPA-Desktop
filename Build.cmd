@@ -7,7 +7,7 @@ if not exist "%IPA_FRAMEWORK%\csc.exe" (
  pause
  exit /b 1
 )
-"%IPA_FRAMEWORK%\csc.exe" /nologo /codepage:65001 /target:winexe /platform:x64 /optimize+ /out:IPA-Desktop.exe /win32icon:App.ico /reference:"%IPA_FRAMEWORK%\WPF\PresentationFramework.dll" /reference:"%IPA_FRAMEWORK%\WPF\PresentationCore.dll" /reference:"%IPA_FRAMEWORK%\WPF\WindowsBase.dll" /reference:"%IPA_FRAMEWORK%\System.Xaml.dll" /reference:"%IPA_FRAMEWORK%\Microsoft.VisualBasic.dll" /reference:"%IPA_FRAMEWORK%\System.Net.Http.dll" /reference:"%IPA_FRAMEWORK%\System.Web.Extensions.dll" /reference:"%IPA_FRAMEWORK%\System.IO.Compression.dll" /reference:"%IPA_FRAMEWORK%\System.IO.Compression.FileSystem.dll" Core.cs IpaMetadata.cs WindowTheme.cs GuiUpdater.cs App.cs
+"%IPA_FRAMEWORK%\csc.exe" /nologo /codepage:65001 /target:winexe /platform:x64 /optimize+ /out:IPA-Desktop.exe /win32icon:App.ico /reference:"%IPA_FRAMEWORK%\WPF\PresentationFramework.dll" /reference:"%IPA_FRAMEWORK%\WPF\PresentationCore.dll" /reference:"%IPA_FRAMEWORK%\WPF\WindowsBase.dll" /reference:"%IPA_FRAMEWORK%\System.Xaml.dll" /reference:"%IPA_FRAMEWORK%\Microsoft.VisualBasic.dll" /reference:"%IPA_FRAMEWORK%\System.ServiceProcess.dll" /reference:"%IPA_FRAMEWORK%\System.Net.Http.dll" /reference:"%IPA_FRAMEWORK%\System.Web.Extensions.dll" /reference:"%IPA_FRAMEWORK%\System.IO.Compression.dll" /reference:"%IPA_FRAMEWORK%\System.IO.Compression.FileSystem.dll" Core.cs IpaMetadata.cs WindowTheme.cs GuiUpdater.cs App.cs
 if errorlevel 1 (
  echo Build failed. Please send the error text.
  pause

@@ -10,6 +10,20 @@ using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using IpaDesktop;
+public sealed class InstalledAppleSupportProbe : IAppleSupportProbe
+{
+    public AppleSupportSnapshot Read()
+    {
+        return new AppleSupportSnapshot
+        {
+            ServiceFound = true,
+            ServiceStatusKnown = true,
+            ServiceRunning = true,
+            ServiceScanCompleted = true,
+            RegistryScanCompleted = true
+        };
+    }
+}
 public sealed class RecordingProcessRunner : IProcessRunner
 {
     readonly object gate = new object();
@@ -37,7 +51,8 @@ $window=$null
 $originalContext=[Threading.SynchronizationContext]::Current
 try {
  $runner=New-Object RecordingProcessRunner
- $engine=New-Object IpaDesktop.Engine($temp,$runner)
+ $supportProbe=New-Object InstalledAppleSupportProbe
+ $engine=New-Object IpaDesktop.Engine($temp,$runner,$supportProbe)
  $engine.Settings.Current='test'
  $engine.Settings.CheckGuiUpdates=$false;$engine.Settings.AutoUpdate=$false
  $bins=Join-Path $temp 'Versions/test/windows_amd64'
@@ -61,6 +76,25 @@ try {
  $restored=New-Object IpaDesktop.Engine($temp)
  if($restored.Settings.CheckGuiUpdates -or $restored.Settings.AutoUpdate){throw 'Settings/rollback lost user update preferences'}
  $engine.Settings.Current='test';$engine.Save()
+ $snapshot=New-Object IpaDesktop.AppleSupportSnapshot
+ $snapshot.ServiceScanCompleted=$true;$snapshot.RegistryScanCompleted=$true
+ if([IpaDesktop.AppleSupportService]::Evaluate($snapshot).Status -ne [IpaDesktop.AppleSupportStatus]::NotDetected){throw 'Absent components were reported installed'}
+ $snapshot.InstallationDetected=$true
+ if([IpaDesktop.AppleSupportService]::Evaluate($snapshot).Status -ne [IpaDesktop.AppleSupportStatus]::ServiceMissing){throw 'Registered components without a service were reported ready'}
+ $snapshot.ServiceFound=$true;$snapshot.ServiceStatusKnown=$true
+ if([IpaDesktop.AppleSupportService]::Evaluate($snapshot).Status -ne [IpaDesktop.AppleSupportStatus]::Stopped){throw 'Stopped service was reported ready'}
+ $snapshot.ServiceRunning=$true;$snapshot.InstallationDetected=$false
+ if([IpaDesktop.AppleSupportService]::Evaluate($snapshot).Status -ne [IpaDesktop.AppleSupportStatus]::Running){throw 'Store-style service without standalone installation record was missed'}
+ $snapshot.ServiceStatusKnown=$false
+ if([IpaDesktop.AppleSupportService]::Evaluate($snapshot).Status -ne [IpaDesktop.AppleSupportStatus]::Unknown){throw 'Unreadable service status was reported stopped'}
+ $snapshot.ServiceFound=$false;$snapshot.RegistryScanCompleted=$false
+ if([IpaDesktop.AppleSupportService]::Evaluate($snapshot).Status -ne [IpaDesktop.AppleSupportStatus]::Unknown){throw 'Registry access failure was reported absent'}
+ $probe=New-Object IpaDesktop.WindowsAppleSupportProbe
+ $actual=$probe.Read()
+ if(!$actual){throw 'Read-only Windows probe did not return a report'}
+ $report=[IpaDesktop.AppleSupportService]::Evaluate($actual)
+ Write-Host ('PASS: read-only Windows probe; actual status: '+$report.Status)
+ Write-Host 'PASS: absent, stopped, missing service, running without MSI record and unknown inspection states'
  Write-Host 'PASS: injectable process runner; download arguments; device names/UDIDs; local repository; update preferences'
  [Threading.SynchronizationContext]::SetSynchronizationContext((New-Object Windows.Threading.DispatcherSynchronizationContext([Windows.Threading.Dispatcher]::CurrentDispatcher)))
  $desktop=New-Object IpaDesktop.Desktop($engine,$false,$PSScriptRoot)
@@ -117,6 +151,8 @@ try {
  $remove.RaiseEvent((New-Object Windows.RoutedEventArgs([Windows.Controls.Button]::ClickEvent,$remove)));Pump
  if($window.FindName('ChosenFiles').Items.Count -ne 0){throw 'IPA remove button failed'}
  if($window.FindName('Devices').Background.Color.ToString() -ne '#FF16704C'){throw 'Initial device-search color changed'}
+ Click 'CheckAppleSupport';WaitIdle
+ if(!$window.FindName('AppleSupportStatus').Text.Contains('Apple') -or $window.FindName('AppleSupportStatus').Foreground.Color.ToString() -ne '#FF81D4AD'){throw 'Apple support check did not render the running state'}
  Click 'Devices';WaitIdle
  if($window.FindName('DeviceList').Items.Count -ne 2 -or !$window.FindName('DeviceList').SelectedItem.Name.StartsWith('Test iPhone')){throw 'Named device discovery failed'}
  Click 'AccountInfo';WaitIdle

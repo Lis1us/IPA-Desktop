@@ -6,7 +6,7 @@
 |---|---|---|
 | Source/Domain | Данные и правила выбора без зависимости от WPF | State, AppRow, LocalRow, DeviceRow, DownloadSelection, InstallationSelection, SearchSession |
 | Source/Infrastructure | Операции с ОС и форматами данных | ProcessRunner, SettingsStore, ToolLocator, IpaMetadata, JsonCodec, BufferedJournal |
-| Source/Services | Прикладные операции | AppToolClient, ApplicationDownloads, AppCatalog, DeviceService, LocalAppRepository, EngineUpdater, GuiUpdater |
+| Source/Services | Прикладные операции | AppToolClient, ApplicationDownloads, AppCatalog, DeviceService, AppleSupportService, LocalAppRepository, EngineUpdater, GuiUpdater |
 | Source/Presentation | Отображение и обработка действий | Desktop, AccountController, SearchController, FilesController, UpdatesController, WindowController |
 
 Desktop создаёт контроллеры, управляет временем жизни окна, журналом, отменой и состоянием текущей операции. Контроллер каждой вкладки хранит её выбор и подключает обработчики кнопок. Для операций с файлами и устройствами контроллеры обращаются к сервисам.
@@ -30,3 +30,5 @@ CI проверяет совпадение генерируемых копий �
 ## Проверки
 
 Существующие сценарии проверяют очереди, процессы, отмену, метаданные, обновление/откат, WPF-шаблоны, крестики, журнал и размер окна. Verify-Services.ps1 добавляет проверки с RecordingProcessRunner и проверяет реальные контроллеры окна с отключённым запуском сетевых проверок. Подмена возвращает тестовые ответы и не запускает Apple-утилиты.
+
+AppleSupportService получает данные через IAppleSupportProbe. WindowsAppleSupportProbe только читает список служб и 32-/64-битный реестр; он не запускает службы и не устанавливает драйверы. Проверки различают отсутствие компонентов и невозможность прочитать их состояние. В тестах поставщик подменяется, поэтому установка Apple ПО на сервере сборки не требуется.

@@ -1,5 +1,7 @@
 // Generated from Source/. Edit the source classes, then run Sync-Sources.ps1.
+using Microsoft.Win32;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.IO.Compression;
 using System.IO;
@@ -7,11 +9,53 @@ using System.Linq;
 using System.Net.Http;
 using System.Net;
 using System.Security.Cryptography;
+using System.Security;
+using System.ServiceProcess;
 using System.Text;
 using System.Threading.Tasks;
 using System.Threading;
 using System.Web.Script.Serialization;
 using System;
+
+// Domain/AppleSupportReport.cs
+namespace IpaDesktop
+{
+    public enum AppleSupportStatus
+    {
+        Running,
+        Stopped,
+        ServiceMissing,
+        NotDetected,
+        Unknown
+    }
+
+    public sealed class AppleSupportSnapshot
+    {
+        public bool InstallationDetected { get; set; }
+        public bool ServiceFound { get; set; }
+        public bool ServiceStatusKnown { get; set; }
+        public bool ServiceRunning { get; set; }
+        public bool ServiceScanCompleted { get; set; }
+        public bool RegistryScanCompleted { get; set; }
+        public string Details { get; set; }
+    }
+
+    public sealed class AppleSupportReport
+    {
+        public AppleSupportStatus Status { get; set; }
+        public string Message { get; set; }
+        public string Details { get; set; }
+        public string HelpUrl
+        {
+            get
+            {
+                return Status == AppleSupportStatus.Stopped
+                    ? "https://support.apple.com/ru-ru/102347"
+                    : "https://support.apple.com/ru-ru/118290";
+            }
+        }
+    }
+}
 
 // Domain/AppRow.cs
 namespace IpaDesktop
@@ -448,7 +492,7 @@ namespace IpaDesktop
             ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
             var h = new HttpClient();
             h.Timeout = TimeSpan.FromMinutes(15);
-            h.DefaultRequestHeaders.UserAgent.ParseAdd("IPA-Desktop/0.1.11");
+            h.DefaultRequestHeaders.UserAgent.ParseAdd("IPA-Desktop/0.1.12");
             return h;
         }
     }
@@ -711,6 +755,117 @@ namespace IpaDesktop
     }
 }
 
+// Infrastructure/WindowsAppleSupportProbe.cs
+namespace IpaDesktop
+{
+    public interface IAppleSupportProbe
+    {
+        AppleSupportSnapshot Read();
+    }
+
+    public sealed class WindowsAppleSupportProbe : IAppleSupportProbe
+    {
+        public AppleSupportSnapshot Read()
+        {
+            var result = new AppleSupportSnapshot();
+            var details = new List<string>();
+            ServiceController[] services = null;
+            try
+            {
+                services = ServiceController.GetServices();
+                result.ServiceScanCompleted = true;
+                foreach (var service in services)
+                {
+                    if (!service.ServiceName.Equals("AppleMobileDeviceService", StringComparison.OrdinalIgnoreCase)
+                        && !service.ServiceName.Equals("Apple Mobile Device Service", StringComparison.OrdinalIgnoreCase)
+                        && !service.DisplayName.StartsWith("Apple Mobile Device", StringComparison.OrdinalIgnoreCase))
+                        continue;
+                    result.ServiceFound = true;
+                    details.Add("Служба: " + service.ServiceName);
+                    result.ServiceRunning = service.Status == ServiceControllerStatus.Running;
+                    result.ServiceStatusKnown = true;
+                    details.Add("Состояние службы: " + service.Status);
+                    break;
+                }
+            }
+            catch (InvalidOperationException error)
+            {
+                result.ServiceScanCompleted = false;
+                details.Add("Проверка службы: " + error.Message);
+            }
+            catch (Win32Exception error)
+            {
+                result.ServiceScanCompleted = false;
+                details.Add("Проверка службы: " + error.Message);
+            }
+            catch (SecurityException error)
+            {
+                result.ServiceScanCompleted = false;
+                details.Add("Проверка службы: " + error.Message);
+            }
+            finally
+            {
+                if (services != null)
+                    foreach (var service in services) service.Dispose();
+            }
+
+            bool registryComplete = true;
+            foreach (var view in new[] { RegistryView.Registry64, RegistryView.Registry32 })
+            {
+                try
+                {
+                    using (var root = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, view))
+                    {
+                        using (var apple = root.OpenSubKey(@"SOFTWARE\Apple Inc.\Apple Mobile Device Support"))
+                        {
+                            if (apple != null)
+                            {
+                                result.InstallationDetected = true;
+                                details.Add("Регистрация компонентов Apple: " + view);
+                            }
+                        }
+                        using (var uninstall = root.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"))
+                        {
+                            if (uninstall == null) continue;
+                            foreach (var keyName in uninstall.GetSubKeyNames())
+                            {
+                                using (var product = uninstall.OpenSubKey(keyName))
+                                {
+                                    if (product == null) continue;
+                                    string name = Convert.ToString(product.GetValue("DisplayName"));
+                                    if (!name.Equals("Apple Mobile Device Support", StringComparison.OrdinalIgnoreCase))
+                                        continue;
+                                    result.InstallationDetected = true;
+                                    details.Add("Установленный компонент: " + name + " " + Convert.ToString(product.GetValue("DisplayVersion")));
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+                catch (UnauthorizedAccessException error)
+                {
+                    registryComplete = false;
+                    details.Add("Проверка реестра: " + error.Message);
+                }
+                catch (SecurityException error)
+                {
+                    registryComplete = false;
+                    details.Add("Проверка реестра: " + error.Message);
+                }
+                catch (System.IO.IOException error)
+                {
+                    registryComplete = false;
+                    details.Add("Проверка реестра: " + error.Message);
+                }
+            }
+            result.RegistryScanCompleted = registryComplete;
+            result.Details = String.Join(Environment.NewLine, details);
+            return result;
+        }
+    }
+}
+
 // Services/AppCatalog.cs
 namespace IpaDesktop
 {
@@ -788,6 +943,72 @@ namespace IpaDesktop
             var custom = File.Exists(customPath) ? ToolResponse.ParseCatalog(File.ReadAllText(customPath, Encoding.UTF8)) : new List<AppRow>();
             var catalog = File.Exists(cache) ? ToolResponse.ParseCatalog(File.ReadAllText(cache, Encoding.UTF8)) : new List<AppRow>();
             return ToolResponse.MatchCatalog(query, custom, catalog);
+        }
+    }
+}
+
+// Services/AppleSupportService.cs
+namespace IpaDesktop
+{
+    public sealed class AppleSupportService
+    {
+        readonly IAppleSupportProbe probe;
+
+        public AppleSupportService(IAppleSupportProbe probe)
+        {
+            if (probe == null) throw new ArgumentNullException("probe");
+            this.probe = probe;
+        }
+
+        public Task<AppleSupportReport> CheckAsync(CancellationToken cancellation)
+        {
+            return Task.Run(delegate
+            {
+                cancellation.ThrowIfCancellationRequested();
+                var snapshot = probe.Read();
+                cancellation.ThrowIfCancellationRequested();
+                return Evaluate(snapshot);
+            }, cancellation);
+        }
+
+        public static AppleSupportReport Evaluate(AppleSupportSnapshot snapshot)
+        {
+            if (snapshot == null) throw new ArgumentNullException("snapshot");
+            AppleSupportStatus status;
+            string message;
+            string guidance;
+            if (snapshot.ServiceFound && snapshot.ServiceStatusKnown)
+            {
+                status = snapshot.ServiceRunning ? AppleSupportStatus.Running : AppleSupportStatus.Stopped;
+                message = snapshot.ServiceRunning ? "Служба Apple запущена" : "Служба Apple остановлена";
+                guidance = snapshot.ServiceRunning
+                    ? "Служба Apple Mobile Device работает. Если iPhone не найден, проверьте USB, разблокировку и доверие."
+                    : "Откройте services.msc, найдите Apple Mobile Device Service и запустите или перезапустите её. Для изменения состояния службы могут потребоваться права администратора.";
+            }
+            else if (snapshot.ServiceFound || !snapshot.ServiceScanCompleted || !snapshot.RegistryScanCompleted)
+            {
+                status = AppleSupportStatus.Unknown;
+                message = "Статус компонентов Apple неизвестен";
+                guidance = "Не удалось полностью проверить компоненты Apple. Подробности — ниже. Поиск iPhone можно выполнить вручную.";
+            }
+            else if (snapshot.InstallationDetected)
+            {
+                status = AppleSupportStatus.ServiceMissing;
+                message = "Компоненты Apple найдены, служба отсутствует";
+                guidance = "Найдена регистрация Apple Mobile Device Support, но служба отсутствует. Проверьте или восстановите установку ПО Apple, затем повторите проверку.";
+            }
+            else
+            {
+                status = AppleSupportStatus.NotDetected;
+                message = "Apple Mobile Device Support не обнаружен";
+                guidance = "Служба и регистрация Apple Mobile Device Support не найдены. Установите ПО для устройств с официального сайта Apple или Microsoft Store, затем повторите проверку.";
+            }
+            return new AppleSupportReport
+            {
+                Status = status,
+                Message = message,
+                Details = guidance + (String.IsNullOrWhiteSpace(snapshot.Details) ? "" : Environment.NewLine + snapshot.Details)
+            };
         }
     }
 }
@@ -974,6 +1195,7 @@ namespace IpaDesktop
                 return runner.Active;
             }
         }
+        public AppleSupportService AppleSupport { get; private set; }
         public DeviceService Devices
         {
             get;
@@ -1017,7 +1239,10 @@ namespace IpaDesktop
         public Engine(string root) : this(root, null)
         {
         }
-        public Engine(string root, IProcessRunner processRunner)
+        public Engine(string root, IProcessRunner processRunner) : this(root, processRunner, new WindowsAppleSupportProbe())
+        {
+        }
+        public Engine(string root, IProcessRunner processRunner, IAppleSupportProbe appleSupportProbe)
         {
             settings = new SettingsStore(root);
             Downloads = Path.Combine(root, "Apps");
@@ -1027,6 +1252,7 @@ namespace IpaDesktop
             tools = new AppToolClient(runner, locator);
             catalog = new AppCatalog(settings, locator);
             updater = new EngineUpdater(settings, runner);
+            AppleSupport = new AppleSupportService(appleSupportProbe);
             Devices = new DeviceService(runner, locator);
             LocalFiles = new LocalAppRepository(Downloads);
             ApplicationDownloads = new ApplicationDownloads(tools, Downloads);

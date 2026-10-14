@@ -52,6 +52,7 @@ namespace IpaDesktop
                 return runner.Active;
             }
         }
+        public AppleSupportService AppleSupport { get; private set; }
         public DeviceService Devices
         {
             get;
@@ -95,7 +96,10 @@ namespace IpaDesktop
         public Engine(string root) : this(root, null)
         {
         }
-        public Engine(string root, IProcessRunner processRunner)
+        public Engine(string root, IProcessRunner processRunner) : this(root, processRunner, new WindowsAppleSupportProbe())
+        {
+        }
+        public Engine(string root, IProcessRunner processRunner, IAppleSupportProbe appleSupportProbe)
         {
             settings = new SettingsStore(root);
             Downloads = Path.Combine(root, "Apps");
@@ -105,6 +109,7 @@ namespace IpaDesktop
             tools = new AppToolClient(runner, locator);
             catalog = new AppCatalog(settings, locator);
             updater = new EngineUpdater(settings, runner);
+            AppleSupport = new AppleSupportService(appleSupportProbe);
             Devices = new DeviceService(runner, locator);
             LocalFiles = new LocalAppRepository(Downloads);
             ApplicationDownloads = new ApplicationDownloads(tools, Downloads);

@@ -173,7 +173,7 @@ namespace IpaDesktop
             cancellation = new CancellationTokenSource();
             string[] buttons =
             {
-                "Login", "AccountInfo", "Logout", "Search", "Versions", "VersionInfo", "Download", "RefreshFiles", "ImportFile", "DeleteFiles", "Devices", "InstallFiles", "CheckUpdate", "Rollback", "CheckGuiUpdate", "InstallGuiUpdate", "AddChosen", "ClearChosen", "AddInstall", "ClearInstall"
+                "Login", "AccountInfo", "Logout", "Search", "Versions", "VersionInfo", "Download", "RefreshFiles", "ImportFile", "DeleteFiles", "Devices", "InstallFiles", "CheckUpdate", "Rollback", "CheckGuiUpdate", "InstallGuiUpdate", "AddChosen", "ClearChosen", "AddInstall", "ClearInstall", "CheckAppleSupport"
             };
             foreach (var name in buttons) C<Button>(name).IsEnabled = false;
             C<ItemsControl>("ChosenFiles").IsEnabled = false;
@@ -290,10 +290,11 @@ namespace IpaDesktop
             ApplyActions();
             w.Loaded += delegate
             {
-                Log("IPA Desktop 0.1.11. Файлы: " + engine.Downloads);
+                Log("IPA Desktop 0.1.12. Файлы: " + engine.Downloads);
                 if (!checkAtStartup) return;
                 Work("Проверка движка и сохранённого входа…", async delegate(CancellationToken ct)
                 {
+                    await files.CheckSupport(ct);
                     if (engine.Settings.CheckGuiUpdates)
                     {
                         try
@@ -366,6 +367,7 @@ namespace IpaDesktop
 {
     public sealed class FilesController : WindowController
     {
+        AppleSupportReport appleSupport;
         readonly InstallationSelection installChosen = new InstallationSelection();
         public FilesController(Desktop view, Engine engine) : base(view, engine)
         {
@@ -447,10 +449,20 @@ namespace IpaDesktop
                 var paths = dialog.FileNames;
                 Work("Добавление IPA…", ct => engine.LocalFiles.ImportAsync(paths, ct));
             });
+            On("CheckAppleSupport", delegate
+            {
+                Work("Проверка компонентов Apple…", CheckSupport);
+            });
+            On("OpenAppleSupportHelp", delegate
+            {
+                string url = appleSupport == null ? "https://support.apple.com/ru-ru/118290" : appleSupport.HelpUrl;
+                Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+            });
             On("Devices", delegate
             {
                 Work("Поиск iPhone…", async delegate(CancellationToken ct)
                 {
+                    await CheckSupport(ct);
                     var combo = C<ComboBox>("DeviceList");
                     combo.ItemsSource = null;
                     ApplyActions();
@@ -475,6 +487,7 @@ namespace IpaDesktop
                 if (MessageBox.Show(w, "Установить IPA (" + rows.Count + ") на устройство " + device.Name + "?" + Environment.NewLine + Environment.NewLine + summary, "Установка", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) != MessageBoxResult.Yes) return;
                 Work("Установка IPA…", async delegate(CancellationToken ct)
                 {
+                    await CheckSupport(ct);
                     var failed = new List<string>();
                     int index = 0;
                     foreach (var row in rows)
@@ -501,6 +514,19 @@ namespace IpaDesktop
                 });
             });
         }
+        public async Task CheckSupport(CancellationToken cancellation)
+        {
+            appleSupport = await engine.AppleSupport.CheckAsync(cancellation);
+            var label = C<TextBlock>("AppleSupportStatus");
+            label.Text = appleSupport.Message;
+            label.ToolTip = appleSupport.Details;
+            string color = appleSupport.Status == AppleSupportStatus.Running ? "#81D4AD" :
+                appleSupport.Status == AppleSupportStatus.NotDetected ? "#F2A0A0" : "#E8C382";
+            label.Foreground = new System.Windows.Media.SolidColorBrush(
+                (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(color));
+            Log(appleSupport.Message + ". " + appleSupport.Details);
+        }
+
         public override void RefreshActions()
         {
             C<ItemsControl>("ChosenFiles").IsEnabled = !busy;

@@ -14,7 +14,7 @@ namespace IpaDesktop
 {
     public static class GuiUpdater
     {
-        public const string CurrentVersion = "0.1.11";
+        public const string CurrentVersion = "0.1.12";
         public static readonly string[] PackageFiles =
         {
             "IPA-Desktop.exe", "IPA-Desktop.exe.config", "MainWindow.xaml", "App.ico", "Update-App.ps1", "Core.cs", "App.cs", "IpaMetadata.cs", "WindowTheme.cs", "GuiUpdater.cs", "Build.cmd", "Start.cmd", "README.md", "LICENSE.txt", "Verify.ps1", "Verify-IpaMetadata.ps1", "Verify-Updater.ps1"
