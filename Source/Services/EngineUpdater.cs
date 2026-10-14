@@ -17,6 +17,8 @@ namespace IpaDesktop
     public sealed class EngineUpdater
     {
         public const string SourceRepository = "Sorvigolova/ipatool";
+        public const string DeviceRepository = "Lis1us/IPA-Desktop";
+        public const string DeviceTagPrefix = "device-tools-v";
         public const string WindowsAssetName = "windows_amd64_ipatool-cpp.zip";
         static readonly string[] DeviceFiles = { "idevice_id.exe", "ideviceinfo.exe", "ideviceinstaller.exe", "libimobiledevice-1.0.dll", "libplist-2.0.dll" };
         public static Asset SelectAsset(Release release)
@@ -33,25 +35,25 @@ namespace IpaDesktop
         }
         public static Asset SelectDeviceAsset(Release release)
         {
-            var matches = (release.assets ?? new Asset[0]).Where(a => a.name.StartsWith("IPA_Downloader", StringComparison.OrdinalIgnoreCase) && a.name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)).ToArray();
-            if (matches.Length != 1) throw new IOException("Не найден однозначный архив инструментов для iPhone.");
-            ValidateAsset(matches[0], "kda2495/IPA_Downloader");
+            if (release.tag_name == null || !System.Text.RegularExpressions.Regex.IsMatch(release.tag_name, @"^device-tools-v\d+\.\d+\.\d+$")) throw new IOException("Некорректный релиз нашего комплекта для iPhone.");
+            var expected = "IPA-DeviceTools-" + release.tag_name.Substring(DeviceTagPrefix.Length) + "-Windows-x64.zip";
+            var matches = (release.assets ?? new Asset[0]).Where(a => a.name == expected).ToArray();
+            if (matches.Length != 1) throw new IOException("Не найден однозначный Windows x64 архив нашего комплекта.");
+            ValidateAsset(matches[0], DeviceRepository);
+            if (!matches[0].browser_download_url.StartsWith("https://github.com/" + DeviceRepository + "/releases/download/" + release.tag_name + "/", StringComparison.Ordinal)) throw new IOException("Архив принадлежит другому релизу.");
+            if (matches[0].digest == null || !System.Text.RegularExpressions.Regex.IsMatch(matches[0].digest, @"^sha256:[0-9a-fA-F]{64}$")) throw new IOException("Для комплекта требуется SHA-256 от GitHub.");
             return matches[0];
         }
         public static bool HasDeviceTools(string root)
         {
             if (!Directory.Exists(root)) return false;
-            return DeviceFiles.All(file => Directory.GetFiles(root, file, SearchOption.AllDirectories).Count(x => x.Replace('\\', '/').Contains("/windows_amd64/")) == 1);
+            return new[] { "idevice_id.exe", "ideviceinfo.exe", "ideviceinstaller.exe", "libimobiledevice-1.0*.dll", "libplist-2.0*.dll" }.All(file => Directory.GetFiles(root, file, SearchOption.AllDirectories).Count(x => x.Replace('\\', '/').Contains("/windows_amd64/")) == 1);
         }
-        public static void CopyDeviceTools(string source, string destination)
+        public static void CheckDevicePackage(string root)
         {
-            var bins = Directory.GetFiles(source, "ideviceinstaller.exe", SearchOption.AllDirectories).Where(x => x.Replace('\\', '/').Contains("/windows_amd64/")).ToArray();
-            if (bins.Length != 1) throw new IOException("Не найден комплект Windows-инструментов для iPhone.");
-            var folder = Path.GetDirectoryName(bins[0]);
-            if (DeviceFiles.Any(file => !File.Exists(Path.Combine(folder, file)))) throw new IOException("Неполный комплект инструментов для iPhone.");
-            Directory.CreateDirectory(destination);
-            // Keep only device executables and their shipped DLL dependencies.
-            foreach (var file in DeviceFiles.Take(3).Select(x => Path.Combine(folder, x)).Concat(Directory.GetFiles(folder, "*.dll"))) File.Copy(file, Path.Combine(destination, Path.GetFileName(file)), false);
+            if (!HasDeviceTools(root) || !Directory.Exists(Path.Combine(root, "LICENSES")) || !File.Exists(Path.Combine(root, "sources.json"))) throw new IOException("Неполный комплект: нужны утилиты, DLL, лицензии и исходные ревизии.");
+            var names = Directory.GetFiles(root, "*.exe", SearchOption.AllDirectories).Select(Path.GetFileName).ToArray();
+            if (names.Length != 3 || DeviceFiles.Take(3).Any(name => !names.Contains(name))) throw new IOException("Комплект содержит неожиданные программы.");
         }
 
         readonly SettingsStore store;
@@ -146,9 +148,9 @@ namespace IpaDesktop
             var needSupport = String.IsNullOrEmpty(supportName) || !HasDeviceTools(locator.VersionRoot(supportName));
             var newSupport = "support-" + name;
             var supportStage = Path.Combine(Root, "Versions", newSupport);
-            var bundleStage = Path.Combine(Root, "bundle-" + name);
             var supportZip = Path.Combine(Root, "support-" + name + ".zip");
             var supportVersion = Settings.DeviceVersion ?? Settings.Version;
+            var supportSource = Settings.DeviceSource;
             bool committed = false;
             try
             {
@@ -156,17 +158,18 @@ namespace IpaDesktop
                 await Download(asset, zip, ct);
                 if (needSupport)
                 {
-                    Log("Получение только Windows-инструментов установки из IPA_Downloader…");
+                    Log("Получение нашего Windows-комплекта для iPhone…");
                     var supportRelease = await CheckDeviceTools(ct);
                     await Download(SelectDeviceAsset(supportRelease), supportZip, ct);
                     await Task.Run(delegate
                     {
-                        Extract(supportZip, bundleStage);
-                        CopyDeviceTools(bundleStage, Path.Combine(supportStage, "windows_amd64"));
+                        Extract(supportZip, supportStage);
+                        CheckDevicePackage(supportStage);
                     }, ct);
                     await ValidateDeviceTools(supportStage, ct);
                     supportName = newSupport;
                     supportVersion = supportRelease.tag_name;
+                    supportSource = DeviceRepository;
                 }
                 ct.ThrowIfCancellationRequested();
                 Log("Распаковка и проверка команд…");
@@ -193,6 +196,7 @@ namespace IpaDesktop
                 Settings.PreviousSource = previous.Source;
                 Settings.DeviceCurrent = supportName;
                 Settings.DeviceVersion = supportVersion;
+                Settings.DeviceSource = supportSource;
                 Settings.Current = name;
                 Settings.Version = rel.tag_name;
                 Settings.Previous = previous.Current;
@@ -211,7 +215,6 @@ namespace IpaDesktop
             {
                 if (File.Exists(zip)) File.Delete(zip);
                 if (File.Exists(supportZip)) File.Delete(supportZip);
-                if (Directory.Exists(bundleStage)) Directory.Delete(bundleStage, true);
                 if (!committed && Directory.Exists(staging)) Directory.Delete(staging, true);
                 if (!committed && Directory.Exists(supportStage)) Directory.Delete(supportStage, true);
             }
@@ -251,18 +254,26 @@ namespace IpaDesktop
             using (var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct))
             {
                 timeout.CancelAfter(TimeSpan.FromSeconds(20));
-                using (var response = await Http.GetAsync("https://api.github.com/repos/kda2495/IPA_Downloader/releases/latest", timeout.Token))
+                // Tool releases are separate from GUI releases and never become GUI latest.
+                for (int page = 1; page <= 10; page++)
                 {
-                    response.EnsureSuccessStatusCode();
-                    return JsonCodec.Deserialize<Release>(await response.Content.ReadAsStringAsync());
+                    using (var response = await Http.GetAsync("https://api.github.com/repos/" + DeviceRepository + "/releases?per_page=100&page=" + page, timeout.Token))
+                    {
+                        response.EnsureSuccessStatusCode();
+                        var releases = JsonCodec.Deserialize<Release[]>(await response.Content.ReadAsStringAsync());
+                        var found = releases.FirstOrDefault(r => !r.draft && !r.prerelease && r.tag_name != null && r.tag_name.StartsWith(DeviceTagPrefix, StringComparison.Ordinal));
+                        if (found != null) { SelectDeviceAsset(found); return found; }
+                        if (releases.Length < 100) break;
+                    }
                 }
+                throw new IOException("Наш опубликованный Windows-комплект для iPhone пока не найден.");
             }
         }
         public bool DeviceToolsCurrent(Release release)
         {
             var current = Settings.DeviceCurrent ?? Settings.Current;
             var version = Settings.DeviceVersion ?? (Settings.Source == null ? Settings.Version : null);
-            return !String.IsNullOrEmpty(current) && release.tag_name == version && HasDeviceTools(new ToolLocator(store).VersionRoot(current));
+            return Settings.DeviceSource == DeviceRepository && !String.IsNullOrEmpty(current) && release.tag_name == version && HasDeviceTools(new ToolLocator(store).VersionRoot(current));
         }
         async Task ValidateDeviceTools(string root, CancellationToken ct)
         {
@@ -284,17 +295,16 @@ namespace IpaDesktop
             var asset = SelectDeviceAsset(release);
             var name = "support-" + Guid.NewGuid().ToString("N");
             var stage = Path.Combine(Root, "Versions", name);
-            var bundle = Path.Combine(Root, "bundle-" + name);
             var zip = Path.Combine(Root, name + ".zip");
             bool committed = false;
             try
             {
-                Log("Обновление инструментов для iPhone из IPA_Downloader " + release.tag_name);
+                Log("Обновление нашего комплекта для iPhone " + release.tag_name);
                 await Download(asset, zip, ct);
                 await Task.Run(delegate
                 {
-                    Extract(zip, bundle);
-                    CopyDeviceTools(bundle, Path.Combine(stage, "windows_amd64"));
+                    Extract(zip, stage);
+                    CheckDevicePackage(stage);
                 }, ct);
                 await ValidateDeviceTools(stage, ct);
                 ct.ThrowIfCancellationRequested();
@@ -302,8 +312,10 @@ namespace IpaDesktop
                 Settings = old.Copy();
                 Settings.PreviousDeviceCurrent = old.DeviceCurrent ?? (old.Source == null ? old.Current : null);
                 Settings.PreviousDeviceVersion = old.DeviceVersion ?? (old.Source == null ? old.Version : null);
+                Settings.PreviousDeviceSource = old.DeviceSource;
                 Settings.DeviceCurrent = name;
                 Settings.DeviceVersion = release.tag_name;
+                Settings.DeviceSource = DeviceRepository;
                 try { Save(); committed = true; }
                 catch { Settings = old; throw; }
                 Log("Инструменты для iPhone обновлены. Предыдущий комплект сохранён.");
@@ -311,7 +323,6 @@ namespace IpaDesktop
             finally
             {
                 if (File.Exists(zip)) File.Delete(zip);
-                if (Directory.Exists(bundle)) Directory.Delete(bundle, true);
                 if (!committed && Directory.Exists(stage)) Directory.Delete(stage, true);
             }
         }
@@ -322,6 +333,8 @@ namespace IpaDesktop
             Settings = old.Copy();
             Settings.DeviceCurrent = old.PreviousDeviceCurrent;
             Settings.DeviceVersion = old.PreviousDeviceVersion;
+            Settings.DeviceSource = old.PreviousDeviceSource;
+            Settings.PreviousDeviceSource = old.DeviceSource;
             Settings.PreviousDeviceCurrent = old.DeviceCurrent ?? old.Current;
             Settings.PreviousDeviceVersion = old.DeviceVersion ?? old.Version;
             Settings.AutoUpdateDeviceTools = false;

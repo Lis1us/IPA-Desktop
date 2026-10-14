@@ -6,7 +6,7 @@
 
 **Поиск, скачивание и установка приложений для iPhone — в одном окне Windows.**
 
-IPA Desktop — независимый графический интерфейс на C# и WPF. Программа получает ipatool напрямую из [Sorvigolova/ipatool](https://github.com/Sorvigolova/ipatool), использует каталог и Windows-инструменты установки из [IPA Downloader](https://github.com/kda2495/IPA_Downloader), работает с Apple Account через ipatool и устанавливает IPA на подключённый iPhone через ideviceinstaller.
+IPA Desktop — независимый графический интерфейс на C# и WPF. Программа получает ipatool напрямую из [Sorvigolova/ipatool](https://github.com/Sorvigolova/ipatool), использует каталог из [IPA Downloader](https://github.com/kda2495/IPA_Downloader) и наш Windows-комплект libimobiledevice/ideviceinstaller, работает с Apple Account через ipatool и устанавливает IPA на подключённый iPhone через ideviceinstaller.
 
 **[Скачать актуальную сборку →](https://github.com/Lis1us/IPA-Desktop/releases/latest)** · [История изменений](https://github.com/Lis1us/IPA-Desktop/releases) · [Сообщить об ошибке](https://github.com/Lis1us/IPA-Desktop/issues)
 
@@ -137,7 +137,9 @@ IPA Desktop — независимый графический интерфейс
 
 Движок загружается из официальных Releases `Sorvigolova/ipatool` (архив `windows_amd64_ipatool-cpp.zip`). Каталог IPA Downloader обновляется отдельно при поиске, с сохранённой копией на случай недоступности сети.
 
-При переходе существующий комплект для iPhone сохраняется. На новой установке архив IPA Downloader временно скачивается, но сохраняются только `idevice_id`, `ideviceinfo`, `ideviceinstaller` и их DLL. Его скрипты и ipatool не используются. Комплект для iPhone обновляется отдельно при запуске (можно отключить) или кнопкой «Проверить инструменты». Перед переключением проверяется запуск трёх утилит. «Откатить комплект» возвращает предыдущие инструменты и отключает только их автообновление. Обновление и откат ipatool не меняют этот комплект. Скачанные IPA, пользовательский каталог и сессия аккаунта сохраняются; если новая версия ipatool потребует повторного входа, выполните его в консоли.
+Наш комплект для iPhone собирается из зафиксированных исходных ревизий libimobiledevice и ideviceinstaller. Он опубликован в этом репозитории отдельными релизами `device-tools-v…`, с DLL, лицензиями и архивом исходников. Сборка описана в [Tools/DeviceTools](Tools/DeviceTools/README.md). Из IPA Downloader берётся только каталог; его архивы и скрипты больше не скачиваются.
+
+При переходе старые инструменты остаются доступными для отката. Новая сборка проверяется при запуске (можно отключить) или кнопкой «Проверить инструменты». Перед переключением проверяются SHA-256, состав комплекта и запуск трёх утилит. «Откатить комплект» возвращает предыдущие инструменты и отключает только их автообновление. Обновление и откат ipatool сохраняют этот комплект. Скачанные IPA и сессия аккаунта сохраняются. Apple Mobile Device Support/служба Apple по-прежнему нужны для USB-подключения.
 
 При обновлении IPA Desktop архив проверяется по размеру и SHA-256, сохраняется резервная копия заменяемых файлов, затем программа перезапускается. При ошибке копирования выполняется откат. Скачанные IPA и настройки сохраняются.
 
@@ -214,7 +216,7 @@ GitHub Actions проверяет код на Windows, собирает ZIP и �
 |---|---|
 | [Lis1us](https://github.com/Lis1us) | Проект IPA Desktop и сопровождение |
 | OpenAI Codex | Помощь в разработке, рефакторинге и проверках оболочки |
-| [kda2495 / IPA Downloader](https://github.com/kda2495/IPA_Downloader) | Каталог приложений и комплект Windows-инструментов установки |
+| [kda2495 / IPA Downloader](https://github.com/kda2495/IPA_Downloader) | Только каталог приложений |
 | [Sorvigolova / ipatool](https://github.com/Sorvigolova/ipatool) | Прямой источник Windows-релизов ipatool; вход, поиск, версии и скачивание приложений |
 | [libimobiledevice](https://github.com/libimobiledevice/libimobiledevice) | Поиск подключённых устройств и чтение информации о них |
 | [ideviceinstaller](https://github.com/libimobiledevice/ideviceinstaller) | Установка IPA на устройства |
@@ -226,3 +228,5 @@ IPA Desktop — самостоятельная оболочка, не офици
 Код IPA Desktop распространяется по [MIT License](LICENSE.txt).
 
 Сторонние утилиты скачиваются отдельно из IPA Downloader и сохраняют лицензии своих авторов. Их бинарные файлы не включены в ZIP оболочки.
+
+Компоненты комплекта для iPhone распространяются по собственным лицензиям LGPL/GPL и другим лицензиям зависимостей; их лицензии и исходники приложены к релизу комплекта. MIT относится к интерфейсу IPA Desktop.

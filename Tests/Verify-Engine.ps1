@@ -9,14 +9,18 @@ try {
  [IO.Directory]::CreateDirectory($oldBins)|Out-Null
  foreach($name in @('ipatool-old.exe','idevice_id.exe','ideviceinfo.exe','ideviceinstaller.exe','libimobiledevice-1.0.dll','libplist-2.0.dll','dependency.dll','Launcher.ps1')){[IO.File]::WriteAllText((Join-Path $oldBins $name),'fixture')}
  $support=Join-Path $temp 'Versions/devices/windows_amd64'
- [IpaDesktop.EngineUpdater]::CopyDeviceTools((Join-Path $temp 'Versions/legacy'),$support)
+ [IO.Directory]::CreateDirectory($support)|Out-Null
+ foreach($name in @('idevice_id.exe','ideviceinfo.exe','ideviceinstaller.exe','libimobiledevice-1.0.dll','libplist-2.0.dll','dependency.dll')){Copy-Item (Join-Path $oldBins $name) $support}
+ [IO.Directory]::CreateDirectory((Join-Path $temp 'Versions/devices/LICENSES'))|Out-Null
+ [IO.File]::WriteAllText((Join-Path $temp 'Versions/devices/sources.json'),'{}')
+ [IpaDesktop.EngineUpdater]::CheckDevicePackage((Join-Path $temp 'Versions/devices'))
  if(Test-Path (Join-Path $support 'ipatool-old.exe')){throw 'Device import retained bundled ipatool'}
  if(Test-Path (Join-Path $support 'Launcher.ps1')){throw 'Device import retained scripts'}
  if(!(Test-Path (Join-Path $support 'dependency.dll'))){throw 'Device import lost DLL dependencies'}
  if(![IpaDesktop.EngineUpdater]::HasDeviceTools((Join-Path $temp 'Versions/devices'))){throw 'Device import is incomplete'}
  $engine=New-Object IpaDesktop.Engine($temp)
  $engine.Settings.Current='direct';$engine.Settings.Source='Sorvigolova/ipatool';$engine.Settings.Version='1.1.8'
- $engine.Settings.DeviceCurrent='devices';$engine.Settings.DeviceVersion='4.2.2'
+ $engine.Settings.DeviceSource='Lis1us/IPA-Desktop';$engine.Settings.DeviceCurrent='devices';$engine.Settings.DeviceVersion='4.2.2'
  $engine.Settings.Previous='legacy';$engine.Settings.PreviousVersion='4.2.2'
  $engine.Settings.AutoUpdate=$false;$engine.Settings.CheckGuiUpdates=$false
  $direct=Join-Path $temp 'Versions/direct/windows_amd64/nested'
@@ -58,7 +62,17 @@ try {
  $release.assets=@($asset);$asset.browser_download_url='https://github.com/kda2495/IPA_Downloader/releases/download/fixture/test.zip';$rejected=$false
  try{[IpaDesktop.EngineUpdater]::SelectAsset($release)|Out-Null}catch{$rejected=$true}
  if(!$rejected){throw 'Bundled source accepted as direct engine'}
- Write-Host 'PASS: selective device import, independent tool lookup, legacy/direct rollback, persisted settings, release selection'
+ $release.tag_name='device-tools-v1.0.0'
+ $asset.name='IPA-DeviceTools-1.0.0-Windows-x64.zip';$asset.digest='sha256:'+('a'*64)
+ $asset.browser_download_url='https://github.com/Lis1us/IPA-Desktop/releases/download/device-tools-v1.0.0/'+$asset.name
+ [IpaDesktop.EngineUpdater]::SelectDeviceAsset($release)|Out-Null
+ $asset.browser_download_url='https://github.com/kda2495/IPA_Downloader/releases/download/device-tools-v1.0.0/'+$asset.name
+ $rejected=$false;try{[IpaDesktop.EngineUpdater]::SelectDeviceAsset($release)|Out-Null}catch{$rejected=$true}
+ if(!$rejected){throw 'Device update accepted IPA_Downloader binary source'}
+ $asset.browser_download_url='https://github.com/Lis1us/IPA-Desktop/releases/download/device-tools-v1.0.0/'+$asset.name
+ $asset.digest=$null;$rejected=$false;try{[IpaDesktop.EngineUpdater]::SelectDeviceAsset($release)|Out-Null}catch{$rejected=$true}
+ if(!$rejected){throw 'Device update accepted missing GitHub digest'}
+ Write-Host 'PASS: own device package, independent tool lookup, legacy/direct rollback, persisted settings, release selection'
  if($Live){
   $liveRoot=Join-Path $temp 'live'
   $liveEngine=New-Object IpaDesktop.Engine($liveRoot)
@@ -78,6 +92,8 @@ try {
   if($liveEngine.Settings.Current -ne $prior -or $liveEngine.Settings.DeviceCurrent -ne $devices){throw 'Live rollback failed'}
   $deviceRelease=$liveEngine.CheckDeviceTools($ct).GetAwaiter().GetResult()
   if(!$liveEngine.DeviceToolsCurrent($deviceRelease)){throw 'Current support release was not recognized'}
+  $liveEngine.Settings.DeviceSource=$null
+  if($liveEngine.DeviceToolsCurrent($deviceRelease)){throw 'Same-version legacy source prevented migration'}
   $before=$liveEngine.Settings.Current
   $liveEngine.Settings.AutoUpdate=$false;$liveEngine.Settings.CheckGuiUpdates=$false;$liveEngine.Settings.AutoUpdateDeviceTools=$false
   $liveEngine.InstallDeviceTools($deviceRelease,$ct).GetAwaiter().GetResult()

@@ -14,6 +14,8 @@ namespace IpaDesktop
         public string PreviousDeviceVersion { get; set; }
         public string Source { get; set; }
         public string PreviousSource { get; set; }
+        public string DeviceSource { get; set; }
+        public string PreviousDeviceSource { get; set; }
         public string DeviceCurrent { get; set; }
         public string DeviceVersion { get; set; }
         public string Current

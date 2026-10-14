@@ -2,6 +2,8 @@ namespace IpaDesktop
 {
     public class Release
     {
+        public bool draft { get; set; }
+        public bool prerelease { get; set; }
         public string tag_name
         {
             get;

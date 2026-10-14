@@ -1,4 +1,4 @@
-<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Title="IPA Desktop · 0.1.15" Width="1160" Height="800" MinWidth="940" MinHeight="720" WindowStartupLocation="CenterScreen" Background="#10151F" Foreground="#EDF1F8" FontFamily="Segoe UI" FontSize="14" UseLayoutRounding="True" SnapsToDevicePixels="True">
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Title="IPA Desktop · 0.1.16" Width="1160" Height="800" MinWidth="940" MinHeight="720" WindowStartupLocation="CenterScreen" Background="#10151F" Foreground="#EDF1F8" FontFamily="Segoe UI" FontSize="14" UseLayoutRounding="True" SnapsToDevicePixels="True">
  <Window.Resources>
   <Style TargetType="Button">
    <Setter Property="Background" Value="#243247"/><Setter Property="Foreground" Value="#EDF1F8"/>
@@ -42,7 +42,7 @@
  </Window.Resources>
  <Grid Margin="24,18,24,20">
   <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-  <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><StackPanel><StackPanel Orientation="Horizontal"><Image x:Name="BrandIcon" Width="46" Height="46" Margin="0,0,12,0"/><TextBlock Text="IPA Desktop" FontSize="30" FontWeight="SemiBold" VerticalAlignment="Center"/><Border Background="#23354E" CornerRadius="6" Padding="8,4" Margin="12,0,0,0" VerticalAlignment="Center"><TextBlock Text="0.1.15" Foreground="#AFCDF7" FontSize="12"/></Border></StackPanel><TextBlock Text="Приложения для iPhone — поиск, загрузка и установка" Foreground="#9BACBF" Margin="0,6,0,20"/></StackPanel><StackPanel Grid.Column="1" HorizontalAlignment="Right"><TextBlock x:Name="EngineVersion" Text="Движок не установлен" Foreground="#78B7FF" HorizontalAlignment="Right"/><TextBlock x:Name="AccountLabel" Text="Аккаунт не проверен" Margin="0,6,0,0" Foreground="#9BACBF"/></StackPanel></Grid>
+  <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><StackPanel><StackPanel Orientation="Horizontal"><Image x:Name="BrandIcon" Width="46" Height="46" Margin="0,0,12,0"/><TextBlock Text="IPA Desktop" FontSize="30" FontWeight="SemiBold" VerticalAlignment="Center"/><Border Background="#23354E" CornerRadius="6" Padding="8,4" Margin="12,0,0,0" VerticalAlignment="Center"><TextBlock Text="0.1.16" Foreground="#AFCDF7" FontSize="12"/></Border></StackPanel><TextBlock Text="Приложения для iPhone — поиск, загрузка и установка" Foreground="#9BACBF" Margin="0,6,0,20"/></StackPanel><StackPanel Grid.Column="1" HorizontalAlignment="Right"><TextBlock x:Name="EngineVersion" Text="Движок не установлен" Foreground="#78B7FF" HorizontalAlignment="Right"/><TextBlock x:Name="AccountLabel" Text="Аккаунт не проверен" Margin="0,6,0,0" Foreground="#9BACBF"/></StackPanel></Grid>
   <StackPanel Grid.Row="1"><TextBlock x:Name="UpdateNotice" Visibility="Collapsed" Foreground="#8CBAFF" Margin="0,0,0,8"/><WrapPanel x:Name="AccountActions"><Button x:Name="Login" Content="Войти в Apple Account" Background="#3878E5"/><Button x:Name="AccountInfo" Content="Проверить аккаунт"/><Button x:Name="Logout" Content="Выйти"/><Button x:Name="OpenFolder" Content="Папка IPA"/></WrapPanel></StackPanel>
   <TabControl Grid.Row="2" Margin="0,12,0,16">
    <TabItem Header="Поиск и загрузка"><Grid Margin="18"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
@@ -84,7 +84,7 @@
    <TabItem Header="Обновления"><ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel Margin="24">
     <Border Background="#1C293B" BorderBrush="#34445C" BorderThickness="1" CornerRadius="10" Padding="20" Margin="0,0,0,24"><StackPanel>
      <TextBlock Text="IPA Desktop" FontSize="22" FontWeight="SemiBold"/>
-     <TextBlock x:Name="GuiVersionStatus" Text="Установлена версия 0.1.15" Foreground="#8CBAFF" Margin="0,8,0,14"/>
+     <TextBlock x:Name="GuiVersionStatus" Text="Установлена версия 0.1.16" Foreground="#8CBAFF" Margin="0,8,0,14"/>
      <CheckBox x:Name="CheckGuiUpdates" Content="Проверять новые версии программы при запуске" Foreground="#EDF1F8" Margin="0,0,0,16"/>
      <WrapPanel><Button x:Name="CheckGuiUpdate" Content="Проверить версию"/><Button x:Name="InstallGuiUpdate" Content="Установить обновление" IsEnabled="False" Background="#3878E5"/><Button x:Name="OpenGuiReleases" Content="Все версии"/></WrapPanel>
      <TextBlock Text="Установка — после подтверждения. Программа перезапустится, ваши IPA и настройки сохранятся." Foreground="#9BACBF" TextWrapping="Wrap"/>
@@ -92,9 +92,9 @@
     <Border Background="#1C293B" BorderBrush="#34445C" BorderThickness="1" CornerRadius="10" Padding="20"><StackPanel>
      <TextBlock Text="Инструменты для iPhone" FontSize="22" FontWeight="SemiBold"/>
      <TextBlock x:Name="DeviceToolsVersion" Text="Комплект не установлен" Foreground="#8CBAFF" Margin="0,8,0,12"/>
-     <TextBlock Text="Источник: kda2495 / IPA_Downloader · только инструменты установки и DLL" Foreground="#9BACBF" TextWrapping="Wrap" Margin="0,0,0,16"/>
+     <TextBlock Text="Источник: Lis1us / IPA-Desktop · наша сборка libimobiledevice и ideviceinstaller" Foreground="#9BACBF" TextWrapping="Wrap" Margin="0,0,0,16"/>
      <CheckBox x:Name="AutoUpdateDeviceTools" Content="Проверять и обновлять инструменты при запуске" Foreground="#EDF1F8" Margin="0,0,0,16"/>
-     <WrapPanel><Button x:Name="CheckDeviceUpdate" Content="Проверить инструменты" Background="#3878E5"/><Button x:Name="RollbackDevices" Content="Откатить комплект"/><Button x:Name="OpenDeviceReleases" Content="Релизы источника"/></WrapPanel>
+     <WrapPanel><Button x:Name="CheckDeviceUpdate" Content="Проверить инструменты" Background="#3878E5"/><Button x:Name="RollbackDevices" Content="Откатить комплект"/><Button x:Name="OpenDeviceReleases" Content="Релизы комплекта"/></WrapPanel>
      <TextBlock Text="Переключение — после проверки запуска всех трёх утилит. Предыдущий комплект сохраняется; откат отключает только его автообновление. Каталог обновляется отдельно при поиске." Foreground="#9BACBF" TextWrapping="Wrap"/>
     </StackPanel></Border></StackPanel></ScrollViewer></TabItem>
    <TabItem Header="Журнал"><TextBox x:Name="Journal" IsReadOnly="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" FontFamily="Consolas" FontSize="12" Margin="18"/></TabItem>

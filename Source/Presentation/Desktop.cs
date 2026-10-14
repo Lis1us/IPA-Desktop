@@ -101,7 +101,7 @@ namespace IpaDesktop
             setting = true;
             C<CheckBox>("AutoUpdate").IsChecked = engine.Settings.AutoUpdate;
             C<CheckBox>("AutoUpdateDeviceTools").IsChecked = engine.Settings.AutoUpdateDeviceTools;
-            C<TextBlock>("DeviceToolsVersion").Text = "Комплект из IPA_Downloader: " + (engine.Settings.DeviceVersion ?? (engine.Settings.Source == null ? engine.Settings.Version : null) ?? "не установлен");
+            C<TextBlock>("DeviceToolsVersion").Text = (engine.Settings.DeviceSource == EngineUpdater.DeviceRepository ? "Наш комплект: " : "Прежний комплект: ") + (engine.Settings.DeviceVersion ?? (engine.Settings.Source == null ? engine.Settings.Version : null) ?? "не установлен");
             setting = false;
         }
         internal async void Work(string title, Func<CancellationToken, Task> action)
@@ -231,7 +231,7 @@ namespace IpaDesktop
             ApplyActions();
             w.Loaded += delegate
             {
-                Log("IPA Desktop 0.1.15. Файлы: " + engine.Downloads);
+                Log("IPA Desktop 0.1.16. Файлы: " + engine.Downloads);
                 if (!checkAtStartup) return;
                 Work("Проверка движка и сохранённого входа…", async delegate(CancellationToken ct)
                 {

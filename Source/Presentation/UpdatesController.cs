@@ -84,7 +84,7 @@ namespace IpaDesktop
             });
             On("OpenDeviceReleases", delegate
             {
-                Process.Start(new ProcessStartInfo("https://github.com/kda2495/IPA_Downloader/releases") { UseShellExecute = true });
+                Process.Start(new ProcessStartInfo("https://github.com/Lis1us/IPA-Desktop/releases?q=device-tools") { UseShellExecute = true });
             });
             On("CheckUpdate", delegate
             {
@@ -149,10 +149,10 @@ namespace IpaDesktop
             var release = await engine.CheckDeviceTools(ct);
             if (engine.DeviceToolsCurrent(release))
             {
-                Log("Комплект для iPhone актуален: IPA_Downloader " + release.tag_name);
+                Log("Наш комплект для iPhone актуален: " + release.tag_name);
                 return;
             }
-            if (!startup && MessageBox.Show(w, "Обновить инструменты для iPhone из IPA_Downloader " + release.tag_name + "? Предыдущий комплект будет сохранён для отката.", "Обновление инструментов", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
+            if (!startup && MessageBox.Show(w, "Обновить наш комплект инструментов для iPhone до " + release.tag_name + "? Предыдущий комплект будет сохранён для отката.", "Обновление инструментов", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
             await engine.InstallDeviceTools(release, ct);
         }
         public async Task CheckGui(CancellationToken ct)
