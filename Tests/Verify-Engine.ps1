@@ -45,7 +45,6 @@ try {
  if($Live){
   $liveRoot=Join-Path $temp 'live'
   $liveEngine=New-Object IpaDesktop.Engine($liveRoot)
-  $liveEngine.Log=[Action[string]]{param($line) Write-Host $line}
   $latest=$liveEngine.Check($ct).GetAwaiter().GetResult()
   $liveEngine.Install($latest,$ct).GetAwaiter().GetResult()
   if($liveEngine.Settings.Source -ne 'Sorvigolova/ipatool' -or !$liveEngine.Settings.DeviceCurrent){throw 'Fresh live install did not commit independent sources'}
