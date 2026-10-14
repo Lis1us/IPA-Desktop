@@ -18,7 +18,7 @@ namespace IpaDesktop {
  public class Release { public string tag_name; public string html_url; public string body; public Asset[] assets; }
  public class Asset { public string name; public string browser_download_url; public string digest; public long size; }
  public class AppRow { public string Name {get;set;} public string ID {get;set;} }
- public class LocalRow { public string Name {get;set;} public string Size {get;set;} public string Path {get;set;} }
+ public class LocalRow { public string AppleAccount {get;set;} public string Name {get;set;} public string Size {get;set;} public string Path {get;set;} }
  public static class JsonCodec {
   static JavaScriptSerializer Serializer {get {return new JavaScriptSerializer {MaxJsonLength=16000000};}}
   public static string Serialize(object value) {return Serializer.Serialize(value);}
@@ -35,7 +35,7 @@ namespace IpaDesktop {
   static HttpClient CreateHttp() {
    ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
    var h = new HttpClient(); h.Timeout = TimeSpan.FromMinutes(15);
-   h.DefaultRequestHeaders.UserAgent.ParseAdd("IPA-Desktop/0.1.4"); return h;
+   h.DefaultRequestHeaders.UserAgent.ParseAdd("IPA-Desktop/0.1.5"); return h;
   }
   public Engine(string root) {
    Root = root; Downloads = Path.Combine(Root,"Apps"); Directory.CreateDirectory(Downloads);

@@ -39,7 +39,19 @@ namespace IpaDesktop {
    var rows=C<DataGrid>("Apps").SelectedItems.Cast<AppRow>().ToList();
    if(rows.Count==0)throw new Exception("Выберите приложение в таблице.");return rows;
   }
-  void RefreshFiles() {C<DataGrid>("Files").ItemsSource=Directory.GetFiles(engine.Downloads,"*.ipa").Select(x=>new FileInfo(x)).OrderByDescending(x=>x.LastWriteTime).Select(x=>new LocalRow{Name=x.Name,Size=(x.Length/1048576.0).ToString("N1")+" МБ",Path=x.FullName}).ToList();}
+  int filesGeneration;
+  async void RefreshFiles() {
+   int generation=++filesGeneration;
+   var selected=new HashSet<string>(C<DataGrid>("Files").SelectedItems.Cast<LocalRow>().Select(x=>x.Path),StringComparer.OrdinalIgnoreCase);
+   try {
+    var rows=await Task.Run(delegate {
+     return Directory.GetFiles(engine.Downloads,"*.ipa").Select(x=>new FileInfo(x)).OrderByDescending(x=>x.LastWriteTime).Select(x=>new LocalRow{Name=x.Name,Size=(x.Length/1048576.0).ToString("N1")+" МБ",Path=x.FullName,AppleAccount=IpaMetadata.ReadAccount(x.FullName)}).ToList();
+    });
+    if(generation!=filesGeneration)return;
+    C<DataGrid>("Files").ItemsSource=rows;
+    foreach(var row in rows)if(selected.Contains(row.Path))C<DataGrid>("Files").SelectedItems.Add(row);
+   } catch(Exception e) {if(generation==filesGeneration)Log("Не удалось обновить список IPA: "+e.Message);}
+  }
   async Task Account(CancellationToken ct) {
    var r=await engine.Tool(new[]{"auth","info"},ct,false);
    signedIn=false;
@@ -129,7 +141,7 @@ namespace IpaDesktop {
    w.Closing+=delegate(object sender,System.ComponentModel.CancelEventArgs e){if(busy){e.Cancel=true;MessageBox.Show(w,"Сначала отмените текущую операцию и дождитесь её завершения.","Выполняется операция");}};
    ApplyActions();
    w.Loaded+=delegate {
-    Log("IPA Desktop 0.1.4. Файлы: "+engine.Downloads);
+    Log("IPA Desktop 0.1.5. Файлы: "+engine.Downloads);
     Work("Проверка движка и сохранённого входа…",async delegate(CancellationToken ct) {
      if(engine.Settings.AutoUpdate) {
       try {await Update(ct,true);}catch(OperationCanceledException){throw;}catch(Exception e){Log("Не удалось обновить движок: "+e.Message);}

@@ -1,0 +1,100 @@
+using System;
+using System.IO;
+using System.IO.Compression;
+using System.Text;
+using System.Xml;
+
+namespace IpaDesktop {
+ // Reads account identity from the IPA itself; never substitutes the current session.
+ public static class IpaMetadata {
+  const int Limit=1024*1024;
+  public static string ReadAccount(string path) {
+   try {
+    using(var zip=ZipFile.OpenRead(path)) {
+     var entry=zip.GetEntry("iTunesMetadata.plist");
+     if(entry==null)return "Не указан";
+     if(entry.Length>Limit)return "Метаданные слишком велики";
+     using(var source=entry.Open())using(var target=new MemoryStream()) {
+      var buffer=new byte[8192];int count;
+      while((count=source.Read(buffer,0,buffer.Length))>0) {
+       if(target.Length+count>Limit)throw new InvalidDataException();
+       target.Write(buffer,0,count);
+      }
+      return ParseAccount(target.ToArray());
+     }
+    }
+   }catch(IOException){return "Не удалось прочитать";}
+    catch(InvalidDataException){return "Не удалось прочитать";}
+    catch(UnauthorizedAccessException){return "Нет доступа";}
+    catch(XmlException){return "Не удалось прочитать";}
+    catch(ArgumentException){return "Не удалось прочитать";}
+    catch(OverflowException){return "Не удалось прочитать";}
+  }
+  static bool IsAccountKey(string key) {return String.Equals(key,"appleId",StringComparison.OrdinalIgnoreCase);}
+  static string Clean(string value) {
+   if(String.IsNullOrWhiteSpace(value))return "Не указан";
+   value=value.Trim();
+   if(value.Length>320)return "Не удалось прочитать";
+   foreach(char c in value)if(Char.IsControl(c))return "Не удалось прочитать";
+   return value;
+  }
+  public static string ParseAccount(byte[] bytes) {
+   if(bytes.Length>Limit)throw new InvalidDataException();
+   if(bytes.Length>=8&&Encoding.ASCII.GetString(bytes,0,8)=="bplist00")return Clean(new BinaryPlist(bytes).Account());
+   var settings=new XmlReaderSettings {DtdProcessing=DtdProcessing.Ignore,XmlResolver=null,MaxCharactersInDocument=Limit};
+   using(var stream=new MemoryStream(bytes))using(var reader=XmlReader.Create(stream,settings)) {
+    var doc=new XmlDocument {XmlResolver=null};doc.Load(reader);
+    var root=doc.SelectSingleNode("/plist/dict");if(root==null)return "Не указан";
+    for(var node=root.FirstChild;node!=null;node=node.NextSibling) {
+     if(node.Name!="key"||!IsAccountKey(node.InnerText))continue;
+     var value=node.NextSibling;while(value!=null&&value.NodeType!=XmlNodeType.Element)value=value.NextSibling;
+     if(value!=null&&value.Name=="string")return Clean(value.InnerText);
+    }
+    return "Не указан";
+   }
+  }
+  // Only the root dictionary's string keys/values are needed. Other plist types are not decoded.
+  sealed class BinaryPlist {
+   readonly byte[] data;readonly int offsetSize,refSize,objects,top,table;
+   void Bounds(int start,int size,int end) {if(start<0||size<0||start>end-size)throw new InvalidDataException("Invalid binary plist bounds");}
+   ulong Number(int start,int size) {
+    if(size<1||size>8)throw new InvalidDataException();Bounds(start,size,data.Length);
+    ulong value=0;for(int i=0;i<size;i++)value=(value<<8)|data[start+i];return value;
+   }
+   int IntNumber(int start,int size) {var n=Number(start,size);if(n>Int32.MaxValue)throw new InvalidDataException();return (int)n;}
+   public BinaryPlist(byte[] bytes) {
+    data=bytes;if(data.Length<40)throw new InvalidDataException();
+    int trailer=data.Length-32;offsetSize=data[trailer+6];refSize=data[trailer+7];
+    objects=IntNumber(trailer+8,8);top=IntNumber(trailer+16,8);table=IntNumber(trailer+24,8);
+    if(objects<1||objects>Limit||top>=objects||table<8||offsetSize<1||offsetSize>8||refSize<1||refSize>8)throw new InvalidDataException();
+    Bounds(table,checked(objects*offsetSize),trailer);
+   }
+   int Offset(int id) {
+    if(id<0||id>=objects)throw new InvalidDataException();
+    int offset=IntNumber(table+id*offsetSize,offsetSize);
+    if(offset<8||offset>=table)throw new InvalidDataException();return offset;
+   }
+   int Length(int marker,ref int pos) {
+    int n=marker&15;if(n<15)return n;
+    Bounds(pos,1,table);int m=data[pos++];
+    if((m>>4)!=1||(m&15)>3)throw new InvalidDataException();
+    int size=1<<(m&15);Bounds(pos,size,table);n=IntNumber(pos,size);pos+=size;return n;
+   }
+   string Text(int id) {
+    int pos=Offset(id);int marker=data[pos++];int type=marker>>4;
+    if(type!=5&&type!=6)return null;
+    int n=Length(marker,ref pos);int size=checked(n*(type==6?2:1));Bounds(pos,size,table);
+    return type==6?Encoding.BigEndianUnicode.GetString(data,pos,size):Encoding.ASCII.GetString(data,pos,size);
+   }
+   public string Account() {
+    int pos=Offset(top);int marker=data[pos++];if((marker>>4)!=13)return null;
+    int count=Length(marker,ref pos);Bounds(pos,checked(count*refSize*2),table);
+    for(int i=0;i<count;i++) {
+     var key=Text(IntNumber(pos+i*refSize,refSize));
+     if(IsAccountKey(key))return Text(IntNumber(pos+(count+i)*refSize,refSize));
+    }
+    return null;
+   }
+  }
+ }
+}
