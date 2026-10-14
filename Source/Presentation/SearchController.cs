@@ -204,7 +204,7 @@ namespace IpaDesktop
                             failed.Add(row.Name);
                             Log("Не удалось скачать " + row.Name + ": " + e.Message);
                         }
-                        RefreshFiles();
+                        RefreshLocalFiles();
                     }
                     if (failed.Count > 0) throw new Exception("Не удалось скачать: " + String.Join(", ", failed) + ". Эти приложения остались в выбранном.");
                 });

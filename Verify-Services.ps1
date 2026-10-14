@@ -1,7 +1,8 @@
 $ErrorActionPreference='Stop'
 Add-Type -AssemblyName PresentationFramework,PresentationCore,WindowsBase,System.Xaml
 [Reflection.Assembly]::LoadFrom((Join-Path $PSScriptRoot 'IPA-Desktop.exe'))|Out-Null
-Add-Type -ReferencedAssemblies @((Join-Path $PSScriptRoot 'IPA-Desktop.exe'),'System.dll','System.Core.dll') -TypeDefinition @'
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'IPA-Desktop.exe') -Destination (Join-Path $PSScriptRoot 'IPA-Desktop-test.dll') -Force
+Add-Type -ReferencedAssemblies @((Join-Path $PSScriptRoot 'IPA-Desktop-test.dll'),'System.dll','System.Core.dll') -TypeDefinition @'
 using System;
 using System.IO;
 using System.Collections.Generic;

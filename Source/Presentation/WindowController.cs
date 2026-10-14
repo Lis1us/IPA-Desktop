@@ -71,7 +71,7 @@ namespace IpaDesktop
         {
             view.StateView();
         }
-        protected void RefreshFiles()
+        protected void RefreshLocalFiles()
         {
             view.RefreshFiles();
         }
