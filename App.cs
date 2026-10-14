@@ -14,6 +14,7 @@ using Microsoft.Win32;
 namespace IpaDesktop {
  public class Desktop {
   Window w;Engine engine;CancellationTokenSource cancellation;bool busy;bool setting;bool signedIn;
+  readonly DownloadSelection chosen=new DownloadSelection();
   string versionApp; Release guiRelease; bool exitingForUpdate;
   T C<T>(string name) where T:class {return w.FindName(name) as T;}
   void On(string name,Action action) {C<Button>(name).Click+=delegate {try {action();}catch(Exception e){Error(e);}};}
@@ -22,19 +23,30 @@ namespace IpaDesktop {
   void StateView() {C<TextBlock>("EngineVersion").Text="Движок: "+(engine.Settings.Version??"не установлен");setting=true;C<CheckBox>("AutoUpdate").IsChecked=engine.Settings.AutoUpdate;setting=false;}
   void ApplyActions() {
    C<Button>("InstallGuiUpdate").IsEnabled=!busy&&guiRelease!=null;
+   C<Button>("AddChosen").IsEnabled=!busy&&C<DataGrid>("Apps").SelectedItems.Count>0;
+   C<Button>("ClearChosen").IsEnabled=!busy&&chosen.Count>0;
+   C<Button>("Download").IsEnabled=!busy&&chosen.Count>0;
+   C<ItemsControl>("ChosenApps").IsEnabled=!busy;
    C<Button>("Login").IsEnabled=!busy&&!signedIn;
    C<Button>("Logout").IsEnabled=!busy&&signedIn;
    C<Button>("VersionInfo").IsEnabled=!busy&&C<DataGrid>("Apps").SelectedItems.Count==1;
   }
   async void Work(string title,Func<CancellationToken,Task> action) {
    if(busy)return;busy=true;cancellation=new CancellationTokenSource();
-   string[] buttons={"Login","AccountInfo","Logout","Search","Versions","VersionInfo","Download","RefreshFiles","ImportFile","DeleteFiles","Devices","InstallFiles","CheckUpdate","Rollback","CheckGuiUpdate","InstallGuiUpdate"};
+   string[] buttons={"Login","AccountInfo","Logout","Search","Versions","VersionInfo","Download","RefreshFiles","ImportFile","DeleteFiles","Devices","InstallFiles","CheckUpdate","Rollback","CheckGuiUpdate","InstallGuiUpdate","AddChosen","ClearChosen"};
    foreach(var name in buttons)C<Button>(name).IsEnabled=false;
+   C<ItemsControl>("ChosenApps").IsEnabled=false;
    C<CheckBox>("CheckGuiUpdates").IsEnabled=false;C<CheckBox>("AutoUpdate").IsEnabled=false;C<Button>("Cancel").IsEnabled=true;C<ProgressBar>("Progress").IsIndeterminate=true;C<TextBlock>("Status").Text=title;Log(title);
    try {await action(cancellation.Token);C<TextBlock>("Status").Text="Готово";}
    catch(OperationCanceledException){Log("Операция отменена.");C<TextBlock>("Status").Text="Отменено";}
    catch(Exception e){Error(e);}
    finally {busy=false;cancellation.Dispose();cancellation=null;foreach(var name in buttons)C<Button>(name).IsEnabled=true;C<CheckBox>("CheckGuiUpdates").IsEnabled=true;C<CheckBox>("AutoUpdate").IsEnabled=true;C<Button>("Cancel").IsEnabled=false;C<ProgressBar>("Progress").IsIndeterminate=false;C<ProgressBar>("Progress").Value=0;StateView();RefreshFiles();ApplyActions();if(exitingForUpdate)w.Close();}
+  }
+  void RefreshChosen() {
+   C<ItemsControl>("ChosenApps").ItemsSource=chosen.Snapshot();
+   C<TextBlock>("ChosenCount").Text=chosen.Count==0?"Добавьте приложения из результатов поиска":"Выбрано: "+chosen.Count+" · сохраняются при новом поиске";
+   C<Button>("Download").Content="Скачать ("+chosen.Count+")";
+   ApplyActions();
   }
   List<AppRow> SelectedApps() {
    var rows=C<DataGrid>("Apps").SelectedItems.Cast<AppRow>().ToList();
@@ -133,7 +145,37 @@ namespace IpaDesktop {
      MessageBox.Show(w,row.Name+Environment.NewLine+Environment.NewLine+"Версия: "+(String.IsNullOrWhiteSpace(number)?"не указана":number)+Environment.NewLine+"Дата выпуска: "+(String.IsNullOrWhiteSpace(date)?"не указана":date)+Environment.NewLine+"ID версии: "+version+Environment.NewLine+"App Store ID: "+row.ID,"Сведения о версии",MessageBoxButton.OK,MessageBoxImage.Information);
     });
    });
-   On("Download",delegate {var rows=SelectedApps();var combo=C<ComboBox>("VersionList");string v=combo.SelectedIndex>0?Convert.ToString(combo.SelectedItem):null;if(v!=null&&(rows.Count!=1||rows[0].ID!=versionApp))throw new Exception("Выбранная версия относится к другому приложению.");Work("Скачивание IPA…",async delegate(CancellationToken ct){var failed=new List<string>();foreach(var row in rows){ct.ThrowIfCancellationRequested();C<TextBlock>("Status").Text="Скачивание: "+row.Name;Log("В очереди: "+row.Name);var args=new List<string>{"download","-i",row.ID,"--purchase","-o",engine.Downloads};if(v!=null)args.AddRange(new[]{"--external-version-id",v});var result=await engine.Tool(args.ToArray(),ct,true);if(result.Code!=0)failed.Add(row.Name);RefreshFiles();}if(failed.Count>0)throw new Exception("Не удалось скачать: "+String.Join(", ",failed)+". Подробности в журнале.");});});
+   On("AddChosen",delegate {
+    var rows=SelectedApps();var combo=C<ComboBox>("VersionList");
+    string version=combo.SelectedIndex>0?Convert.ToString(combo.SelectedItem):null;
+    if(version!=null&&(rows.Count!=1||rows[0].ID!=versionApp))throw new Exception("Для конкретной версии выберите одно приложение и обновите список версий.");
+    foreach(var row in rows)chosen.Add(row,version);
+    RefreshChosen();
+   });
+   On("ClearChosen",delegate {chosen.Clear();RefreshChosen();});
+   C<ItemsControl>("ChosenApps").AddHandler(Button.ClickEvent,new RoutedEventHandler(delegate(object sender,RoutedEventArgs e) {
+    var button=e.Source as Button;if(button==null||busy)return;
+    chosen.Remove(Convert.ToString(button.Tag));RefreshChosen();e.Handled=true;
+   }));
+   On("Download",delegate {
+    var rows=chosen.Snapshot();if(rows.Count==0)throw new Exception("Добавьте приложения в выбранное.");
+    Work("Скачивание выбранных IPA…",async delegate(CancellationToken ct) {
+     var failed=new List<string>();int index=0;
+     foreach(var row in rows) {
+      ct.ThrowIfCancellationRequested();index++;
+      C<TextBlock>("Status").Text="Скачивание "+index+" из "+rows.Count+": "+row.Name;
+      Log("В очереди: "+row.Label);
+      try {
+       var args=new List<string>{"download","-i",row.ID,"--purchase","-o",engine.Downloads};
+       if(row.VersionID!=null)args.AddRange(new[]{"--external-version-id",row.VersionID});
+       var result=await engine.Tool(args.ToArray(),ct,true);Engine.Ensure(result);
+       chosen.Remove(row.ID);RefreshChosen();
+      }catch(OperationCanceledException){throw;}catch(Exception e){failed.Add(row.Name);Log("Не удалось скачать "+row.Name+": "+e.Message);}
+      RefreshFiles();
+     }
+     if(failed.Count>0)throw new Exception("Не удалось скачать: "+String.Join(", ",failed)+". Эти приложения остались в выбранном.");
+    });
+   });
    On("RefreshFiles",RefreshFiles);
    On("DeleteFiles",delegate {
     if(busy)return;
@@ -169,7 +211,7 @@ namespace IpaDesktop {
    w.Closing+=delegate(object sender,System.ComponentModel.CancelEventArgs e){if(busy){e.Cancel=true;MessageBox.Show(w,"Сначала отмените текущую операцию и дождитесь её завершения.","Выполняется операция");}};
    ApplyActions();
    w.Loaded+=delegate {
-    Log("IPA Desktop 0.1.6. Файлы: "+engine.Downloads);
+    Log("IPA Desktop 0.1.7. Файлы: "+engine.Downloads);
     Work("Проверка движка и сохранённого входа…",async delegate(CancellationToken ct) {
      if(engine.Settings.CheckGuiUpdates) {
       try {await CheckGui(ct);}catch(OperationCanceledException){if(ct.IsCancellationRequested)throw;Log("Проверка IPA Desktop: время ожидания истекло.");}catch(Exception e){Log("Проверка IPA Desktop: "+e.Message);}

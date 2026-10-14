@@ -18,6 +18,24 @@ namespace IpaDesktop {
  public class Release { public string tag_name; public string html_url; public string body; public Asset[] assets; }
  public class Asset { public string name; public string browser_download_url; public string digest; public long size; }
  public class AppRow { public string Name {get;set;} public string ID {get;set;} }
+ public class DownloadItem {
+  public string Name {get;set;} public string ID {get;set;} public string VersionID {get;set;}
+  public string Label {get {return Name+(VersionID==null?" · последняя":" · версия "+VersionID);}}
+ }
+ public class DownloadSelection {
+  readonly List<DownloadItem> items=new List<DownloadItem>();
+  public int Count {get {return items.Count;}}
+  public void Add(AppRow app,string version) {
+   if(app==null||String.IsNullOrEmpty(app.ID)||!app.ID.All(Char.IsDigit))throw new ArgumentException("Некорректный App Store ID.");
+   if(version!=null&&(version.Length==0||!version.All(Char.IsDigit)))throw new ArgumentException("Некорректная версия.");
+   var existing=items.FirstOrDefault(x=>x.ID==app.ID);
+   if(existing==null)items.Add(new DownloadItem{Name=app.Name,ID=app.ID,VersionID=version});
+   else {existing.Name=app.Name;existing.VersionID=version;}
+  }
+  public List<DownloadItem> Snapshot() {return items.Select(x=>new DownloadItem{Name=x.Name,ID=x.ID,VersionID=x.VersionID}).ToList();}
+  public void Remove(string id) {items.RemoveAll(x=>x.ID==id);}
+  public void Clear() {items.Clear();}
+ }
  public class LocalRow { public string AppleAccount {get;set;} public string Name {get;set;} public string Size {get;set;} public string Path {get;set;} }
  public static class JsonCodec {
   static JavaScriptSerializer Serializer {get {return new JavaScriptSerializer {MaxJsonLength=16000000};}}
@@ -35,7 +53,7 @@ namespace IpaDesktop {
   static HttpClient CreateHttp() {
    ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
    var h = new HttpClient(); h.Timeout = TimeSpan.FromMinutes(15);
-   h.DefaultRequestHeaders.UserAgent.ParseAdd("IPA-Desktop/0.1.6"); return h;
+   h.DefaultRequestHeaders.UserAgent.ParseAdd("IPA-Desktop/0.1.7"); return h;
   }
   public Engine(string root) {
    Root = root; Downloads = Path.Combine(Root,"Apps"); Directory.CreateDirectory(Downloads);

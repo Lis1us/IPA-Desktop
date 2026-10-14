@@ -13,6 +13,11 @@ try {
  foreach($name in @('MAX','Telegram Messenger','WhatsApp Messenger','YouTube')){$row=New-Object IpaDesktop.AppRow;$row.Name=$name;$row.ID='6739530834';$rows+=$row}
  $window.FindName('Apps').ItemsSource=$rows
  $window.FindName('Apps').SelectedIndex=0
+ $chosen=New-Object IpaDesktop.DownloadSelection
+ foreach($row in $rows){$chosen.Add($row,$null);$row.ID=([long]$row.ID+1).ToString()}
+ $window.FindName('ChosenApps').ItemsSource=$chosen.Snapshot()
+ $window.FindName('ChosenCount').Text='Selected: '+$chosen.Count
+ $window.FindName('Download').Content='Download ('+$chosen.Count+')'
  $window.Show()
  [IpaDesktop.WindowTheme]::Apply($window)
  $window.Dispatcher.Invoke([Action]{},[Windows.Threading.DispatcherPriority]::ApplicationIdle);$window.UpdateLayout()
@@ -28,7 +33,7 @@ try {
  $tabs=FindTabs $window
  foreach($index in 0..3){$tabs.SelectedIndex=$index;$window.Dispatcher.Invoke([Action]{},[Windows.Threading.DispatcherPriority]::ApplicationIdle);$window.UpdateLayout()}
  $tabs.SelectedIndex=0
- $window.Width=940;$window.Height=650;$window.Dispatcher.Invoke([Action]{},[Windows.Threading.DispatcherPriority]::ApplicationIdle);$window.UpdateLayout()
+ $window.Width=940;$window.Height=720;$window.Dispatcher.Invoke([Action]{},[Windows.Threading.DispatcherPriority]::ApplicationIdle);$window.UpdateLayout()
  Write-Host ('Minimum layout: '+$window.FindName('Apps').ActualWidth+' x '+$window.FindName('Apps').ActualHeight)
  $minimumHeight=$window.FindName('Apps').ActualHeight
  $window.FindName('VersionList').IsDropDownOpen=$true;$window.Dispatcher.Invoke([Action]{},[Windows.Threading.DispatcherPriority]::ApplicationIdle);$window.UpdateLayout()
