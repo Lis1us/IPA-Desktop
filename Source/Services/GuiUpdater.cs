@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Collections.Generic;
 using System.Net;
 using System.Net.Http;
 using System.IO.Compression;
@@ -87,10 +88,12 @@ namespace IpaDesktop
             using (var archive = ZipFile.OpenRead(zip))
             {
                 long total = 0;
+                var selected = new Dictionary<string, ZipArchiveEntry>();
                 foreach (var name in PackageFiles)
                 {
-                    var entries = archive.Entries.Where(e => e.FullName == name).ToArray();
+                    var entries = archive.Entries.Where(e => e.FullName.Replace('\\', '/') == name).ToArray();
                     if (entries.Length != 1 || entries[0].Length == 0 || entries[0].Length > 32 * 1024 * 1024) throw new InvalidDataException("Неполный пакет обновления: " + name);
+                    selected.Add(name, entries[0]);
                     total += entries[0].Length;
                     if (total > 128 * 1024 * 1024) throw new InvalidDataException("Пакет слишком велик.");
                 }
@@ -99,7 +102,7 @@ namespace IpaDesktop
                 {
                     string destination = Path.Combine(stage, name);
                     Directory.CreateDirectory(Path.GetDirectoryName(destination));
-                    archive.GetEntry(name).ExtractToFile(destination);
+                    selected[name].ExtractToFile(destination);
                 }
             }
         }

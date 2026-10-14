@@ -45,9 +45,11 @@ namespace IpaDesktop
                     string destination = Path.Combine(root, relative);
                     string legacyName;
                     string legacy = LegacyFiles.TryGetValue(relative, out legacyName) ? Path.Combine(root, legacyName) : null;
-                    bool migrate = legacy != null && File.Exists(legacy) && File.ReadAllBytes(legacy).SequenceEqual(data);
+                    bool migrate = legacy != null && File.Exists(legacy) && new FileInfo(legacy).Length == data.Length && File.ReadAllBytes(legacy).SequenceEqual(data);
                     if (!File.Exists(destination) || migrate)
                     {
+                        if (File.Exists(destination) && (File.GetAttributes(destination) & FileAttributes.ReparsePoint) != 0)
+                            throw new IOException("Файл программы является ссылкой: " + relative);
                         string folder = Path.GetDirectoryName(destination);
                         for (string parent = folder; parent != null && parent.StartsWith(root, StringComparison.OrdinalIgnoreCase); parent = Path.GetDirectoryName(parent))
                         {
