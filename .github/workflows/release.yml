@@ -6,6 +6,7 @@ on:
     paths:
       - MainWindow.xaml
       - '*.cs'
+      - 'Source/**'
       - '*.ps1'
       - Build.cmd
       - App.ico
@@ -37,6 +38,10 @@ jobs:
           if ($xaml -notmatch 'Title="IPA Desktop[^"\r\n]*?(\d+\.\d+\.\d+)"') { throw 'Missing version in window title' }
           "IPA_VERSION=$($Matches[1])" >> $env:GITHUB_ENV
           if (!(Test-Path "changelogs/v$($Matches[1]).md")) { throw 'Write the changelog before publishing a version.' }
+      - name: Verify generated portable sources
+        run: |
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File Sync-Sources.ps1 -Check
+          if ($LASTEXITCODE -ne 0) { throw 'Source snapshots do not match canonical classes' }
       - name: Build
         shell: cmd
         run: call Build.cmd < nul
@@ -54,6 +59,10 @@ jobs:
         run: |
           & powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File Verify-Design.ps1
           if ($LASTEXITCODE -ne 0) { throw 'Design verification failed' }
+      - name: Verify services and controller integration
+        run: |
+          & powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File Verify-Services.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Refactored services or controllers failed' }
       - name: Package
         run: |
           $files = @('IPA-Desktop.exe', 'IPA-Desktop.exe.config', 'MainWindow.xaml', 'Core.cs', 'IpaMetadata.cs', 'App.cs', 'Build.cmd', 'Start.cmd', 'Verify.ps1', 'Verify-IpaMetadata.ps1', 'README.md', 'LICENSE.txt', 'App.ico', 'App.svg', 'WindowTheme.cs', 'GuiUpdater.cs', 'Update-App.ps1', 'Verify-Updater.ps1')
