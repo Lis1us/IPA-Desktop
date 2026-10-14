@@ -1,0 +1,55 @@
+name: Windows device tools
+on:
+  push:
+    branches: [main]
+    paths: [Tools/DeviceTools/**, .github/workflows/device-tools.yml]
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: device-tools-release
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: windows-2022
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            git make autoconf automake libtool
+            mingw-w64-x86_64-gcc mingw-w64-x86_64-pkgconf
+            mingw-w64-x86_64-openssl mingw-w64-x86_64-curl
+            mingw-w64-x86_64-libzip mingw-w64-x86_64-python
+      - name: Build pinned sources and package Windows binaries
+        shell: msys2 {0}
+        run: bash Tools/DeviceTools/build.sh
+      - name: Verify standalone Windows command line tools
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $env:PATH="$env:SystemRoot\System32;$env:SystemRoot"
+          $folder=Join-Path $PWD 'device-build/package/windows_amd64'
+          foreach($name in @('idevice_id','ideviceinfo','ideviceinstaller')){
+            $version=& "$folder/$name.exe" --version 2>&1
+            if($LASTEXITCODE -ne 0 -or !$version){throw "$name failed outside MSYS2"}
+            $help=& "$folder/$name.exe" --help 2>&1
+            if($LASTEXITCODE -ne 0 -or !$help){throw "$name help failed"}
+            if($name -eq 'ideviceinstaller' -and (($help -join "`n") -notmatch 'install PATH')){throw 'Installer CLI contract changed'}
+            Write-Host "$name : $version"
+          }
+      - name: Publish own tools and source archives
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          $version=(Get-Content Tools/DeviceTools/VERSION -Raw).Trim()
+          $tag="device-tools-v$version"
+          gh release view $tag --json tagName 2>$null
+          if($LASTEXITCODE -eq 0){Write-Host 'Published version is immutable; raise VERSION for changes.';exit 0}
+          gh release create $tag "IPA-DeviceTools-$version-Windows-x64.zip" "IPA-DeviceTools-$version-Sources.zip" --target $env:GITHUB_SHA --title "IPA Desktop Device Tools $version" --notes-file Tools/DeviceTools/changelog.md --latest=false
+          if($LASTEXITCODE -ne 0){throw 'Failed to publish device tools'}
