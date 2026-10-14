@@ -19,7 +19,7 @@ Engine — фасад: собирает сервисы и сохраняет с�
 
 EngineUpdater получает Windows x64 ZIP напрямую из Releases Sorvigolova/ipatool и проверяет запуск CLI до переключения настроек. State.Source и PreviousSource различают источники даже при совпадении номеров версий. Старые настройки без этих полей продолжают работать с прежним комплектом.
 
-DeviceCurrent и DeviceVersion указывают отдельный комплект для установки на iPhone. При миграции используется существующий комплект; при чистой установке из IPA_Downloader копируются только три Windows EXE и DLL из их папки. Обновление и откат ipatool сохраняют DeviceCurrent. AppCatalog независимо получает AppsList.txt из IPA_Downloader и использует локальную копию при ошибке сети.
+DeviceCurrent и DeviceVersion указывают отдельный комплект для установки на iPhone. При миграции используется существующий комплект; при чистой установке из IPA_Downloader копируются только три Windows EXE и DLL из их папки. Обновление и откат ipatool сохраняют DeviceCurrent. Отдельные CheckDeviceTools/InstallDeviceTools/RollbackDeviceTools проверяют релиз IPA_Downloader, импортируют EXE/DLL в новую папку, проверяют --version у трёх утилит и атомарно сохраняют состояние. PreviousDeviceCurrent/PreviousDeviceVersion сохраняют независимый откат; AutoUpdateDeviceTools управляет отдельной проверкой при запуске. State.Copy сохраняет все настройки при переключении любого компонента. AppCatalog независимо получает AppsList.txt из IPA_Downloader и использует локальную копию при ошибке сети.
 
 Verify-Engine.ps1 проверяет разделение источников, избирательный импорт, сохранение настроек и откат. С -Live он скачивает настоящие опубликованные Windows-архивы и запускает только справку ipatool, без входа в Apple Account и скачивания приложений.
 

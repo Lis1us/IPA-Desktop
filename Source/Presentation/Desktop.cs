@@ -100,6 +100,8 @@ namespace IpaDesktop
             C<TextBlock>("EngineVersion").Text = "Движок: " + (engine.Settings.Version ?? "не установлен");
             setting = true;
             C<CheckBox>("AutoUpdate").IsChecked = engine.Settings.AutoUpdate;
+            C<CheckBox>("AutoUpdateDeviceTools").IsChecked = engine.Settings.AutoUpdateDeviceTools;
+            C<TextBlock>("DeviceToolsVersion").Text = "Комплект из IPA_Downloader: " + (engine.Settings.DeviceVersion ?? (engine.Settings.Source == null ? engine.Settings.Version : null) ?? "не установлен");
             setting = false;
         }
         internal async void Work(string title, Func<CancellationToken, Task> action)
@@ -109,13 +111,14 @@ namespace IpaDesktop
             cancellation = new CancellationTokenSource();
             string[] buttons =
             {
-                "Login", "AccountInfo", "Logout", "Search", "Versions", "VersionInfo", "Download", "RefreshFiles", "ImportFile", "DeleteFiles", "Devices", "InstallFiles", "CheckUpdate", "Rollback", "CheckGuiUpdate", "InstallGuiUpdate", "AddChosen", "ClearChosen", "AddInstall", "ClearInstall", "CheckAppleSupport"
+                "Login", "AccountInfo", "Logout", "Search", "Versions", "VersionInfo", "Download", "RefreshFiles", "ImportFile", "DeleteFiles", "Devices", "InstallFiles", "CheckUpdate", "Rollback", "CheckGuiUpdate", "InstallGuiUpdate", "AddChosen", "ClearChosen", "AddInstall", "ClearInstall", "CheckAppleSupport", "CheckDeviceUpdate", "RollbackDevices"
             };
             foreach (var name in buttons) C<Button>(name).IsEnabled = false;
             C<ItemsControl>("ChosenFiles").IsEnabled = false;
             C<ItemsControl>("ChosenApps").IsEnabled = false;
             C<CheckBox>("CheckGuiUpdates").IsEnabled = false;
             C<CheckBox>("AutoUpdate").IsEnabled = false;
+            C<CheckBox>("AutoUpdateDeviceTools").IsEnabled = false;
             C<Button>("Cancel").IsEnabled = true;
             C<ProgressBar>("Progress").IsIndeterminate = true;
             C<TextBlock>("Status").Text = title;
@@ -139,6 +142,7 @@ namespace IpaDesktop
                 foreach (var name in buttons) C<Button>(name).IsEnabled = true;
                 C<CheckBox>("CheckGuiUpdates").IsEnabled = true;
                 C<CheckBox>("AutoUpdate").IsEnabled = true;
+                C<CheckBox>("AutoUpdateDeviceTools").IsEnabled = true;
                 C<Button>("Cancel").IsEnabled = false;
                 C<ProgressBar>("Progress").IsIndeterminate = false;
                 C<ProgressBar>("Progress").Value = 0;
@@ -227,7 +231,7 @@ namespace IpaDesktop
             ApplyActions();
             w.Loaded += delegate
             {
-                Log("IPA Desktop 0.1.14. Файлы: " + engine.Downloads);
+                Log("IPA Desktop 0.1.15. Файлы: " + engine.Downloads);
                 if (!checkAtStartup) return;
                 Work("Проверка движка и сохранённого входа…", async delegate(CancellationToken ct)
                 {
@@ -258,6 +262,16 @@ namespace IpaDesktop
                         {
                             Log("Не удалось обновить движок: " + e.Message);
                         }
+                    }
+                    if (engine.Settings.AutoUpdateDeviceTools)
+                    {
+                        try { await updates.UpdateDevices(ct, true); }
+                        catch (OperationCanceledException)
+                        {
+                            if (ct.IsCancellationRequested) throw;
+                            Log("Проверка инструментов для iPhone: время ожидания истекло.");
+                        }
+                        catch (Exception e) { Log("Не удалось обновить инструменты для iPhone: " + e.Message); }
                     }
                     if (!String.IsNullOrEmpty(engine.Settings.Current))
                     {

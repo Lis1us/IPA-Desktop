@@ -67,6 +67,25 @@ namespace IpaDesktop
                     UseShellExecute = true
                 });
             });
+            C<CheckBox>("AutoUpdateDeviceTools").Click += delegate
+            {
+                engine.Settings.AutoUpdateDeviceTools = C<CheckBox>("AutoUpdateDeviceTools").IsChecked == true;
+                try { engine.Save(); } catch (Exception e) { Error(e); }
+            };
+            On("CheckDeviceUpdate", delegate
+            {
+                Work("Проверка инструментов для iPhone…", ct => UpdateDevices(ct, false));
+            });
+            On("RollbackDevices", delegate
+            {
+                if (MessageBox.Show(w, "Вернуть предыдущий комплект для iPhone и отключить его автообновление?", "Откат инструментов", MessageBoxButton.YesNo) != MessageBoxResult.Yes) return;
+                try { engine.RollbackDeviceTools(); StateView(); ApplyActions(); }
+                catch (Exception e) { Error(e); }
+            });
+            On("OpenDeviceReleases", delegate
+            {
+                Process.Start(new ProcessStartInfo("https://github.com/kda2495/IPA_Downloader/releases") { UseShellExecute = true });
+            });
             On("CheckUpdate", delegate
             {
                 Work("Проверка обновлений…", ct => Update(ct, false));
@@ -111,6 +130,7 @@ namespace IpaDesktop
         public override void RefreshActions()
         {
             C<Button>("InstallGuiUpdate").IsEnabled = !busy && guiRelease != null;
+            C<Button>("RollbackDevices").IsEnabled = !busy && !String.IsNullOrEmpty(engine.Settings.PreviousDeviceCurrent);
         }
         public async Task Update(CancellationToken ct, bool startup)
         {
@@ -123,6 +143,17 @@ namespace IpaDesktop
             if (!startup && MessageBox.Show(w, "Установить официальный релиз " + release.tag_name + "?\nТекущая версия будет сохранена для отката.", "Обновление движка", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
             await engine.Install(release, ct);
             if (startup) Log("Автоматическое обновление завершено.");
+        }
+        public async Task UpdateDevices(CancellationToken ct, bool startup)
+        {
+            var release = await engine.CheckDeviceTools(ct);
+            if (engine.DeviceToolsCurrent(release))
+            {
+                Log("Комплект для iPhone актуален: IPA_Downloader " + release.tag_name);
+                return;
+            }
+            if (!startup && MessageBox.Show(w, "Обновить инструменты для iPhone из IPA_Downloader " + release.tag_name + "? Предыдущий комплект будет сохранён для отката.", "Обновление инструментов", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
+            await engine.InstallDeviceTools(release, ct);
         }
         public async Task CheckGui(CancellationToken ct)
         {

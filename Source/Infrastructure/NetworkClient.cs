@@ -22,7 +22,7 @@ namespace IpaDesktop
             ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
             var h = new HttpClient();
             h.Timeout = TimeSpan.FromMinutes(15);
-            h.DefaultRequestHeaders.UserAgent.ParseAdd("IPA-Desktop/0.1.14");
+            h.DefaultRequestHeaders.UserAgent.ParseAdd("IPA-Desktop/0.1.15");
             return h;
         }
     }

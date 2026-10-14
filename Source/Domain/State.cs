@@ -5,8 +5,13 @@ namespace IpaDesktop
         public State()
         {
             AutoUpdate = true;
+            AutoUpdateDeviceTools = true;
             CheckGuiUpdates = true;
         }
+        public State Copy() { return (State)MemberwiseClone(); }
+        public bool AutoUpdateDeviceTools { get; set; }
+        public string PreviousDeviceCurrent { get; set; }
+        public string PreviousDeviceVersion { get; set; }
         public string Source { get; set; }
         public string PreviousSource { get; set; }
         public string DeviceCurrent { get; set; }

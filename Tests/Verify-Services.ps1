@@ -1,4 +1,4 @@
-$projectRoot=Split-Path $PSScriptRoot -Parent
+﻿$projectRoot=Split-Path $PSScriptRoot -Parent
 $ErrorActionPreference='Stop'
 Add-Type -AssemblyName PresentationFramework,PresentationCore,WindowsBase,System.Xaml
 [Reflection.Assembly]::LoadFrom((Join-Path $projectRoot 'IPA-Desktop.exe'))|Out-Null
@@ -55,7 +55,7 @@ try {
  $supportProbe=New-Object InstalledAppleSupportProbe
  $engine=New-Object IpaDesktop.Engine($temp,$runner,$supportProbe)
  $engine.Settings.Current='test'
- $engine.Settings.CheckGuiUpdates=$false;$engine.Settings.AutoUpdate=$false
+ $engine.Settings.CheckGuiUpdates=$false;$engine.Settings.AutoUpdate=$false;$engine.Settings.AutoUpdateDeviceTools=$false
  $bins=Join-Path $temp 'Versions/test/windows_amd64'
  New-Item -ItemType Directory -Path $bins -Force|Out-Null
  foreach($name in @('ipatool.exe','idevice_id.exe','ideviceinfo.exe','ideviceinstaller.exe')){[IO.File]::WriteAllText((Join-Path $bins $name),'fixture')}
@@ -75,7 +75,7 @@ try {
  [IO.Directory]::CreateDirectory((Join-Path $temp 'Versions/old'))|Out-Null
  $engine.Settings.Previous='old';$engine.Settings.PreviousVersion='0';$engine.Rollback()
  $restored=New-Object IpaDesktop.Engine($temp)
- if($restored.Settings.CheckGuiUpdates -or $restored.Settings.AutoUpdate){throw 'Settings/rollback lost user update preferences'}
+ if($restored.Settings.CheckGuiUpdates -or $restored.Settings.AutoUpdate -or $restored.Settings.AutoUpdateDeviceTools){throw 'Settings/rollback lost user update preferences'}
  $engine.Settings.Current='test';$engine.Save()
  $snapshot=New-Object IpaDesktop.AppleSupportSnapshot
  $snapshot.ServiceScanCompleted=$true;$snapshot.RegistryScanCompleted=$true

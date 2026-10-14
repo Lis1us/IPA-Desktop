@@ -30,6 +30,23 @@ try {
  $engine.Rollback()
  $restored=New-Object IpaDesktop.Engine($temp)
  if($restored.Settings.Source -ne 'Sorvigolova/ipatool' -or $restored.Settings.DeviceCurrent -ne 'devices' -or $restored.Settings.AutoUpdate -or $restored.Settings.CheckGuiUpdates){throw 'Rollback/serialization lost independent state'}
+ $engine.Settings.PreviousDeviceCurrent='legacy';$engine.Settings.PreviousDeviceVersion='old-support'
+ $engine.Settings.AutoUpdateDeviceTools=$true;$engine.Save()
+ $engineCurrent=$engine.Settings.Current
+ $engine.RollbackDeviceTools()
+ if($engine.Settings.DeviceCurrent -ne 'legacy' -or $engine.Settings.AutoUpdateDeviceTools -or $engine.Settings.Current -ne $engineCurrent){throw 'Device rollback affected ipatool or did not disable its own updates'}
+ $engine.RollbackDeviceTools()
+ if($engine.Settings.DeviceCurrent -ne 'devices' -or $engine.Settings.Current -ne $engineCurrent){throw 'Second device rollback lost independent history'}
+ $engine.Rollback();$engine.Rollback()
+ if($engine.Settings.AutoUpdateDeviceTools -or $engine.Settings.PreviousDeviceCurrent -ne 'legacy'){throw 'ipatool rollback lost device update settings/history'}
+ $roundTrip=New-Object IpaDesktop.Engine($temp)
+ if($roundTrip.Settings.AutoUpdateDeviceTools -or $roundTrip.Settings.PreviousDeviceCurrent -ne 'legacy'){throw 'Device update preferences were not persisted'}
+ $oldStateRoot=Join-Path $temp 'old-state'
+ [IO.Directory]::CreateDirectory($oldStateRoot)|Out-Null
+ [IO.File]::WriteAllText((Join-Path $oldStateRoot 'state.json'),'{}')
+ $oldStateEngine=New-Object IpaDesktop.Engine($oldStateRoot)
+ if(!$oldStateEngine.Settings.AutoUpdateDeviceTools){throw 'Old settings did not default to device update checks'}
+ Write-Host 'PASS: independent device rollback, repeated rollback, preserved update flags/history and legacy defaults'
  $asset=New-Object IpaDesktop.Asset
  $asset.name='windows_amd64_ipatool-cpp.zip';$asset.size=1
  $asset.browser_download_url='https://github.com/Sorvigolova/ipatool/releases/download/fixture/windows_amd64_ipatool-cpp.zip'
@@ -59,6 +76,25 @@ try {
   if($liveEngine.Settings.Current -eq $prior -or $liveEngine.Settings.Previous -ne $prior -or $liveEngine.Settings.DeviceCurrent -ne $devices){throw 'Live migration did not preserve device tools/previous engine'}
   $liveEngine.Rollback()
   if($liveEngine.Settings.Current -ne $prior -or $liveEngine.Settings.DeviceCurrent -ne $devices){throw 'Live rollback failed'}
+  $deviceRelease=$liveEngine.CheckDeviceTools($ct).GetAwaiter().GetResult()
+  if(!$liveEngine.DeviceToolsCurrent($deviceRelease)){throw 'Current support release was not recognized'}
+  $before=$liveEngine.Settings.Current
+  $liveEngine.Settings.AutoUpdate=$false;$liveEngine.Settings.CheckGuiUpdates=$false;$liveEngine.Settings.AutoUpdateDeviceTools=$false
+  $liveEngine.InstallDeviceTools($deviceRelease,$ct).GetAwaiter().GetResult()
+  if($liveEngine.Settings.Current -ne $before -or $liveEngine.Settings.DeviceCurrent -eq $devices -or $liveEngine.Settings.PreviousDeviceCurrent -ne $devices -or $liveEngine.Settings.AutoUpdate -or $liveEngine.Settings.AutoUpdateDeviceTools -or $liveEngine.Settings.CheckGuiUpdates){throw 'Device update replaced ipatool, lost rollback or preferences'}
+  if(!$liveEngine.DeviceToolsCurrent($deviceRelease)){throw 'Updated device release was not recognized'}
+  $liveEngine.RollbackDeviceTools()
+  if($liveEngine.Settings.DeviceCurrent -ne $devices -or $liveEngine.Settings.Current -ne $before){throw 'Live device rollback changed ipatool'}
+  $saved=[IO.File]::ReadAllText((Join-Path $liveRoot 'state.json'))
+  $versionsBefore=@(Get-ChildItem (Join-Path $liveRoot 'Versions') -Directory).Count
+  $lock=[IO.File]::Open((Join-Path $liveRoot 'state.json'),[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read)
+  $failed=$false
+  try{try{$liveEngine.InstallDeviceTools($deviceRelease,$ct).GetAwaiter().GetResult()}catch{$failed=$true}}finally{$lock.Dispose()}
+  if(!$failed -or [IO.File]::ReadAllText((Join-Path $liveRoot 'state.json')) -ne $saved -or $liveEngine.Settings.DeviceCurrent -ne $devices -or @(Get-ChildItem (Join-Path $liveRoot 'Versions') -Directory).Count -ne $versionsBefore){throw 'Failed settings save changed active support or retained uncommitted stage'}
+  $cancel=New-Object Threading.CancellationTokenSource;$cancel.Cancel();$failed=$false
+  try{try{$liveEngine.InstallDeviceTools($deviceRelease,$cancel.Token).GetAwaiter().GetResult()}catch{$failed=$true}}finally{$cancel.Dispose()}
+  if(!$failed -or $liveEngine.Settings.DeviceCurrent -ne $devices){throw 'Canceled device update changed active support'}
+  Write-Host 'PASS: actual device CLI versions; independent device update/rollback; current release; save-failure recovery; cancellation'
   Write-Host ('PASS: actual upstream Windows ZIP '+$latest.tag_name+'; CLI startup/commands; fresh device import; migration; rollback')
  }
 } finally {if(Test-Path $temp){Remove-Item -LiteralPath $temp -Recurse -Force}}

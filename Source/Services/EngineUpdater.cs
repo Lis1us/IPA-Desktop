@@ -31,6 +31,13 @@ namespace IpaDesktop
             if (asset.browser_download_url == null || !asset.browser_download_url.StartsWith("https://github.com/" + repository + "/releases/download/", StringComparison.Ordinal)) throw new IOException("Неожиданный источник архива.");
             if (asset.size <= 0 || asset.size > 1000000000) throw new IOException("Некорректный размер архива.");
         }
+        public static Asset SelectDeviceAsset(Release release)
+        {
+            var matches = (release.assets ?? new Asset[0]).Where(a => a.name.StartsWith("IPA_Downloader", StringComparison.OrdinalIgnoreCase) && a.name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)).ToArray();
+            if (matches.Length != 1) throw new IOException("Не найден однозначный архив инструментов для iPhone.");
+            ValidateAsset(matches[0], "kda2495/IPA_Downloader");
+            return matches[0];
+        }
         public static bool HasDeviceTools(string root)
         {
             if (!Directory.Exists(root)) return false;
@@ -150,21 +157,14 @@ namespace IpaDesktop
                 if (needSupport)
                 {
                     Log("Получение только Windows-инструментов установки из IPA_Downloader…");
-                    Release supportRelease;
-                    using (var response = await Http.GetAsync("https://api.github.com/repos/kda2495/IPA_Downloader/releases/latest", ct))
-                    {
-                        response.EnsureSuccessStatusCode();
-                        supportRelease = JsonCodec.Deserialize<Release>(await response.Content.ReadAsStringAsync());
-                    }
-                    var candidates = (supportRelease.assets ?? new Asset[0]).Where(x => x.name.StartsWith("IPA_Downloader", StringComparison.OrdinalIgnoreCase) && x.name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)).ToArray();
-                    if (candidates.Length != 1) throw new IOException("Не найден однозначный архив инструментов для iPhone.");
-                    ValidateAsset(candidates[0], "kda2495/IPA_Downloader");
-                    await Download(candidates[0], supportZip, ct);
+                    var supportRelease = await CheckDeviceTools(ct);
+                    await Download(SelectDeviceAsset(supportRelease), supportZip, ct);
                     await Task.Run(delegate
                     {
                         Extract(supportZip, bundleStage);
                         CopyDeviceTools(bundleStage, Path.Combine(supportStage, "windows_amd64"));
                     }, ct);
+                    await ValidateDeviceTools(supportStage, ct);
                     supportName = newSupport;
                     supportVersion = supportRelease.tag_name;
                 }
@@ -188,11 +188,15 @@ namespace IpaDesktop
                 }
                 ct.ThrowIfCancellationRequested();
                 var previous = Settings;
-                Settings = new State
-                {
-                    Source = SourceRepository, PreviousSource = previous.Source, DeviceCurrent = supportName, DeviceVersion = supportVersion,
-                    Current = name, Version = rel.tag_name, Previous = previous.Current, PreviousVersion = previous.Version, AutoUpdate = previous.AutoUpdate, CheckGuiUpdates = previous.CheckGuiUpdates
-                };
+                Settings = previous.Copy();
+                Settings.Source = SourceRepository;
+                Settings.PreviousSource = previous.Source;
+                Settings.DeviceCurrent = supportName;
+                Settings.DeviceVersion = supportVersion;
+                Settings.Current = name;
+                Settings.Version = rel.tag_name;
+                Settings.Previous = previous.Current;
+                Settings.PreviousVersion = previous.Version;
                 try
                 {
                     Save();
@@ -242,16 +246,103 @@ namespace IpaDesktop
                 }
             } else Log("GitHub не предоставил SHA-256; проверены HTTPS-источник и размер архива.");
         }
+        public async Task<Release> CheckDeviceTools(CancellationToken ct)
+        {
+            using (var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct))
+            {
+                timeout.CancelAfter(TimeSpan.FromSeconds(20));
+                using (var response = await Http.GetAsync("https://api.github.com/repos/kda2495/IPA_Downloader/releases/latest", timeout.Token))
+                {
+                    response.EnsureSuccessStatusCode();
+                    return JsonCodec.Deserialize<Release>(await response.Content.ReadAsStringAsync());
+                }
+            }
+        }
+        public bool DeviceToolsCurrent(Release release)
+        {
+            var current = Settings.DeviceCurrent ?? Settings.Current;
+            var version = Settings.DeviceVersion ?? (Settings.Source == null ? Settings.Version : null);
+            return !String.IsNullOrEmpty(current) && release.tag_name == version && HasDeviceTools(new ToolLocator(store).VersionRoot(current));
+        }
+        async Task ValidateDeviceTools(string root, CancellationToken ct)
+        {
+            if (!HasDeviceTools(root)) throw new IOException("Неполный комплект инструментов для iPhone.");
+            foreach (var name in DeviceFiles.Take(3))
+            {
+                var file = Directory.GetFiles(root, name, SearchOption.AllDirectories).Single();
+                using (var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct))
+                {
+                    timeout.CancelAfter(TimeSpan.FromSeconds(20));
+                    var result = await runner.Run(file, new[] { "--version" }, timeout.Token, false, false);
+                    ToolResponse.Ensure(result);
+                    if (String.IsNullOrWhiteSpace(result.Output)) throw new IOException("Инструмент не сообщил версию: " + name);
+                }
+            }
+        }
+        public async Task InstallDeviceTools(Release release, CancellationToken ct)
+        {
+            var asset = SelectDeviceAsset(release);
+            var name = "support-" + Guid.NewGuid().ToString("N");
+            var stage = Path.Combine(Root, "Versions", name);
+            var bundle = Path.Combine(Root, "bundle-" + name);
+            var zip = Path.Combine(Root, name + ".zip");
+            bool committed = false;
+            try
+            {
+                Log("Обновление инструментов для iPhone из IPA_Downloader " + release.tag_name);
+                await Download(asset, zip, ct);
+                await Task.Run(delegate
+                {
+                    Extract(zip, bundle);
+                    CopyDeviceTools(bundle, Path.Combine(stage, "windows_amd64"));
+                }, ct);
+                await ValidateDeviceTools(stage, ct);
+                ct.ThrowIfCancellationRequested();
+                var old = Settings;
+                Settings = old.Copy();
+                Settings.PreviousDeviceCurrent = old.DeviceCurrent ?? (old.Source == null ? old.Current : null);
+                Settings.PreviousDeviceVersion = old.DeviceVersion ?? (old.Source == null ? old.Version : null);
+                Settings.DeviceCurrent = name;
+                Settings.DeviceVersion = release.tag_name;
+                try { Save(); committed = true; }
+                catch { Settings = old; throw; }
+                Log("Инструменты для iPhone обновлены. Предыдущий комплект сохранён.");
+            }
+            finally
+            {
+                if (File.Exists(zip)) File.Delete(zip);
+                if (Directory.Exists(bundle)) Directory.Delete(bundle, true);
+                if (!committed && Directory.Exists(stage)) Directory.Delete(stage, true);
+            }
+        }
+        public void RollbackDeviceTools()
+        {
+            var old = Settings;
+            if (String.IsNullOrEmpty(old.PreviousDeviceCurrent) || !HasDeviceTools(new ToolLocator(store).VersionRoot(old.PreviousDeviceCurrent))) throw new IOException("Предыдущего комплекта инструментов для iPhone пока нет.");
+            Settings = old.Copy();
+            Settings.DeviceCurrent = old.PreviousDeviceCurrent;
+            Settings.DeviceVersion = old.PreviousDeviceVersion;
+            Settings.PreviousDeviceCurrent = old.DeviceCurrent ?? old.Current;
+            Settings.PreviousDeviceVersion = old.DeviceVersion ?? old.Version;
+            Settings.AutoUpdateDeviceTools = false;
+            try { Save(); }
+            catch { Settings = old; throw; }
+            Log("Комплект для iPhone восстановлен. Его автообновление отключено.");
+        }
         public void Rollback()
         {
             if (String.IsNullOrEmpty(Settings.Previous) || !Directory.Exists(Path.Combine(Root, "Versions", Settings.Previous))) throw new Exception("Предыдущей версии пока нет.");
             var old = Settings;
-            Settings = new State
-            {
-                Source = old.PreviousSource, PreviousSource = old.Source,
-                DeviceCurrent = old.DeviceCurrent ?? old.Current, DeviceVersion = old.DeviceVersion ?? old.Version,
-                Current = old.Previous, Version = old.PreviousVersion, Previous = old.Current, PreviousVersion = old.Version, AutoUpdate = false, CheckGuiUpdates = old.CheckGuiUpdates
-            };
+            Settings = old.Copy();
+            Settings.Source = old.PreviousSource;
+            Settings.PreviousSource = old.Source;
+            Settings.DeviceCurrent = old.DeviceCurrent ?? old.Current;
+            Settings.DeviceVersion = old.DeviceVersion ?? old.Version;
+            Settings.Current = old.Previous;
+            Settings.Version = old.PreviousVersion;
+            Settings.Previous = old.Current;
+            Settings.PreviousVersion = old.Version;
+            Settings.AutoUpdate = false;
             try
             {
                 Save();

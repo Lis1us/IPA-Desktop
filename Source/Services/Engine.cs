@@ -149,6 +149,10 @@ namespace IpaDesktop
         {
             return updater.Install(release, ct);
         }
+        public Task<Release> CheckDeviceTools(CancellationToken ct) { return updater.CheckDeviceTools(ct); }
+        public bool DeviceToolsCurrent(Release release) { return updater.DeviceToolsCurrent(release); }
+        public Task InstallDeviceTools(Release release, CancellationToken ct) { return updater.InstallDeviceTools(release, ct); }
+        public void RollbackDeviceTools() { updater.RollbackDeviceTools(); }
         public void Rollback()
         {
             updater.Rollback();
