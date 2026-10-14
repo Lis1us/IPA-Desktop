@@ -65,6 +65,7 @@ namespace IpaDesktop
             var data = Engine.Object(r.Output);
             var email = Convert.ToString(Engine.Get(data, "email"));
             if (String.IsNullOrWhiteSpace(email) || !Object.Equals(Engine.Get(data, "success"), true)) throw new Exception("Не удалось подтвердить сохранённый вход в аккаунт.");
+            view.RegisterPrivate(email);
             signedIn = true;
             C<TextBlock>("AccountLabel").Text = email;
             Log("Аккаунт проверен.");

@@ -363,6 +363,14 @@ namespace IpaDesktop
         {
             lock (gate) { summary = "Готово: " + success + " · ошибок: " + failures + " · всего: " + count; percent = 100; index = count; elapsed.Stop(); }
         }
+        public void Stop(string reason)
+        {
+            lock (gate)
+            {
+                if (kind == null || summary != null) return;
+                elapsed.Stop(); summary = reason + " · " + index + "/" + count + ": " + name;
+            }
+        }
         public bool Active { get { lock (gate) return kind != null; } }
         public double Value { get { lock (gate) return count > 0 ? 100.0 * (index - 1 + (percent ?? 0) / 100.0) / count : 0; } }
         public bool Indeterminate { get { lock (gate) return !percent.HasValue; } }

@@ -81,6 +81,13 @@ namespace IpaDesktop
         }
         readonly BufferedJournal journalBuffer = new BufferedJournal();
         System.Windows.Threading.DispatcherTimer journalTimer;
+        readonly object privateGate = new object();
+        readonly HashSet<string> reportPrivateValues = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        internal void RegisterPrivate(string value)
+        {
+            if (String.IsNullOrWhiteSpace(value) || value.Length > 1024) return;
+            lock (privateGate) if (reportPrivateValues.Count < 2000) reportPrivateValues.Add(value);
+        }
         readonly QueueProgress queueProgress = new QueueProgress();
         internal void BeginQueue(string kind, int index, int total, string app)
         {
@@ -148,10 +155,12 @@ namespace IpaDesktop
                 C<TextBlock>("Status").Text = "Готово";
             } catch (OperationCanceledException)
             {
+                queueProgress.Stop("Отменено");
                 Log("Операция отменена.");
                 C<TextBlock>("Status").Text = "Отменено";
             } catch (Exception e)
             {
+                queueProgress.Stop("Завершено с ошибкой");
                 Error(e);
             } finally
             {
@@ -237,7 +246,9 @@ namespace IpaDesktop
             On("ExportDiagnostics", delegate
             {
                 JournalView.Flush(C<TextBox>("Journal"), journalBuffer, true);
-                var privateValues = new List<string> { Environment.UserName };
+                List<string> privateValues;
+                lock (privateGate) privateValues = reportPrivateValues.ToList();
+                privateValues.Add(Environment.UserName);
                 var email = C<TextBlock>("AccountLabel").Text;
                 if (email.Contains("@")) privateValues.Add(email);
                 foreach (var device in C<ComboBox>("DeviceList").Items.Cast<DeviceRow>()) { privateValues.Add(device.ID); privateValues.Add(device.Name); }

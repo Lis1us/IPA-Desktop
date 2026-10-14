@@ -34,7 +34,7 @@ try{
  Assert (($rows|Where-Object Path -eq $binary).Version -eq '2.0') 'Binary Info.plist version was not read'
  Assert (($rows|Where-Object Path -eq $latest).Version -eq '1.10') 'Info.plist did not override metadata fallback'
  Assert (($rows|Measure-Object Bytes -Sum).Sum -gt 0) 'Storage size is missing'
- $engine.AppSets.Save('Base',@($rows|Where-Object { $_.Path -eq $old -or $_.Path -eq $latest }))
+ $engine.AppSets.Save('Base',[IpaDesktop.LocalRow[]]@($rows|Where-Object { $_.Path -eq $old -or $_.Path -eq $latest }))
  $sets=$engine.AppSets.Load();Assert ($sets.Count -eq 1 -and $sets[0].Files.Count -eq 2) 'Set did not persist selected IPA names'
  $missing=$null;$resolved=$engine.AppSets.Resolve($sets[0],$rows,[ref]$missing)
  Assert ($resolved.Count -eq 2 -and $missing.Count -eq 0) 'Set did not resolve exact IPA files'
@@ -45,7 +45,7 @@ try{
  try{$engine.AppSets.Resolve($bad,$rows,[ref]$missing)|Out-Null}catch{$rejected=$true}
  Assert $rejected 'Set path traversal was accepted'
  $outside=New-Object IpaDesktop.LocalRow;$outside.Path=Join-Path $temp 'outside.ipa';[IO.File]::WriteAllText($outside.Path,'fixture')
- $rejected=$false;try{$engine.AppSets.Save('Outside',@($outside))}catch{$rejected=$true}
+ $rejected=$false;try{$engine.AppSets.Save('Outside',[IpaDesktop.LocalRow[]]@($outside))}catch{$rejected=$true}
  Assert $rejected 'Set accepted an IPA outside the downloads folder'
  $engine.AppSets.Delete('Base');Assert ($engine.AppSets.Load().Count -eq 0 -and [IO.File]::Exists($latest)) 'Deleting a set removed IPA files'
  Write-Host 'PASS: persisted IPA sets, missing files, path bounds, XML/binary metadata, numeric versions, account isolation and storage size'
@@ -61,6 +61,8 @@ try{
  $progress.Begin('Установка',1,2,'Example')
  Assert ($progress.Feed('Install: InstallingApplication (30%)')) 'Installer percentage was ignored'
  $progress.Complete(1,1);Assert ($progress.Value -eq 100 -and $progress.Text.Contains('ошибок: 1')) 'Queue result summary is incorrect'
+ $progress.Begin('Скачивание',1,2,'Canceled');$progress.Feed('PROGRESS:50')|Out-Null;$progress.Stop('Отменено')
+ Assert ($progress.Text.Contains('Отменено') -and !$progress.Feed('PROGRESS:80')) 'Canceled progress continued updating'
  $progress.Reset();Assert (!$progress.Active) 'New operation retained old progress'
  Write-Host 'PASS: actual progress formats, honest missing metrics, global queue progress and result summary'
  $raw=@'
@@ -76,7 +78,7 @@ refresh_token=refresh-secret
 00008030-0000111ABC000DEF
 Private iPhone
 '@
- $report=[IpaDesktop.DiagnosticReport]::Create($raw,'1.1.8','device-tools-v1.0.0',@('Private iPhone'))
+ $report=[IpaDesktop.DiagnosticReport]::Create($raw,'1.1.8','device-tools-v1.0.0',[string[]]@('Private iPhone'))
  foreach($secret in @('first@example.com','PrivateUser','header-secret','cookie-secret','json-pass','json-token','123456','9876543210','argument pass','654321','phrase-secret','refresh-secret','plist-secret','00008030-0000111ABC000DEF','Private iPhone')){Assert (!$report.Contains($secret)) ('Diagnostic report leaked '+$secret)}
  Assert ($report.Contains('6739530834') -and $report.Contains('version 1.10') -and $report.Contains('1.1.8')) 'Diagnostic redaction discarded useful application/version data'
  Write-Host 'PASS: diagnostic emails, profiles, headers, JSON secrets, CLI credentials, plist tokens and device identifiers are scrubbed'

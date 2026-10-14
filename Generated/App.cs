@@ -67,6 +67,7 @@ namespace IpaDesktop
             var data = Engine.Object(r.Output);
             var email = Convert.ToString(Engine.Get(data, "email"));
             if (String.IsNullOrWhiteSpace(email) || !Object.Equals(Engine.Get(data, "success"), true)) throw new Exception("Не удалось подтвердить сохранённый вход в аккаунт.");
+            view.RegisterPrivate(email);
             signedIn = true;
             C<TextBlock>("AccountLabel").Text = email;
             Log("Аккаунт проверен.");
@@ -145,6 +146,13 @@ namespace IpaDesktop
         }
         readonly BufferedJournal journalBuffer = new BufferedJournal();
         System.Windows.Threading.DispatcherTimer journalTimer;
+        readonly object privateGate = new object();
+        readonly HashSet<string> reportPrivateValues = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        internal void RegisterPrivate(string value)
+        {
+            if (String.IsNullOrWhiteSpace(value) || value.Length > 1024) return;
+            lock (privateGate) if (reportPrivateValues.Count < 2000) reportPrivateValues.Add(value);
+        }
         readonly QueueProgress queueProgress = new QueueProgress();
         internal void BeginQueue(string kind, int index, int total, string app)
         {
@@ -212,10 +220,12 @@ namespace IpaDesktop
                 C<TextBlock>("Status").Text = "Готово";
             } catch (OperationCanceledException)
             {
+                queueProgress.Stop("Отменено");
                 Log("Операция отменена.");
                 C<TextBlock>("Status").Text = "Отменено";
             } catch (Exception e)
             {
+                queueProgress.Stop("Завершено с ошибкой");
                 Error(e);
             } finally
             {
@@ -301,7 +311,9 @@ namespace IpaDesktop
             On("ExportDiagnostics", delegate
             {
                 JournalView.Flush(C<TextBox>("Journal"), journalBuffer, true);
-                var privateValues = new List<string> { Environment.UserName };
+                List<string> privateValues;
+                lock (privateGate) privateValues = reportPrivateValues.ToList();
+                privateValues.Add(Environment.UserName);
                 var email = C<TextBlock>("AccountLabel").Text;
                 if (email.Contains("@")) privateValues.Add(email);
                 foreach (var device in C<ComboBox>("DeviceList").Items.Cast<DeviceRow>()) { privateValues.Add(device.ID); privateValues.Add(device.Name); }
@@ -492,6 +504,7 @@ namespace IpaDesktop
                     foreach (var row in rows) installChosen.Add(row);
                     RefreshInstallChosen();
                     C<TextBlock>("SetStatus").Text = "Добавлено IPA: " + rows.Count + (missing.Length > 0 ? " · отсутствуют: " + String.Join(", ", missing) : "");
+                    view.RegisterPrivate(set.Name);
                     Log("Набор «" + set.Name + "»: добавлено " + rows.Count + ", отсутствует " + missing.Length);
                     if (missing.Length > 0) Log("Отсутствующие IPA: " + String.Join(", ", missing));
                     if (rows.Count > 0) C<TabItem>("FilesTab").IsSelected = true;
@@ -529,6 +542,7 @@ namespace IpaDesktop
                     combo.ItemsSource = devices;
                     if (devices.Count > 0)
                     {
+                        foreach (var device in devices) { view.RegisterPrivate(device.ID); view.RegisterPrivate(device.Name); }
                         combo.SelectedIndex = 0;
                         Log("Найдено: " + String.Join(", ", devices.Select(x => x.Name)));
                     } else Log("iPhone не обнаружен. Проверьте USB, доверие и драйвер Apple.");

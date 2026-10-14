@@ -91,6 +91,7 @@ namespace IpaDesktop
                     foreach (var row in rows) installChosen.Add(row);
                     RefreshInstallChosen();
                     C<TextBlock>("SetStatus").Text = "Добавлено IPA: " + rows.Count + (missing.Length > 0 ? " · отсутствуют: " + String.Join(", ", missing) : "");
+                    view.RegisterPrivate(set.Name);
                     Log("Набор «" + set.Name + "»: добавлено " + rows.Count + ", отсутствует " + missing.Length);
                     if (missing.Length > 0) Log("Отсутствующие IPA: " + String.Join(", ", missing));
                     if (rows.Count > 0) C<TabItem>("FilesTab").IsSelected = true;
@@ -128,6 +129,7 @@ namespace IpaDesktop
                     combo.ItemsSource = devices;
                     if (devices.Count > 0)
                     {
+                        foreach (var device in devices) { view.RegisterPrivate(device.ID); view.RegisterPrivate(device.Name); }
                         combo.SelectedIndex = 0;
                         Log("Найдено: " + String.Join(", ", devices.Select(x => x.Name)));
                     } else Log("iPhone не обнаружен. Проверьте USB, доверие и драйвер Apple.");

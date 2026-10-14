@@ -117,6 +117,7 @@ try {
  $window.FindName('StorageFiles').ItemsSource=$localRows
  $window.FindName('SetName').Text='Base set'
  $window.FindName('StorageSummary').Text='IPA: 2 | Storage: 200 MB | Older versions: 1'
+ $window.Dispatcher.Invoke([Action]{},[Windows.Threading.DispatcherPriority]::ApplicationIdle);$window.UpdateLayout()
  $bitmap=New-Object Windows.Media.Imaging.RenderTargetBitmap([int]$visual.ActualWidth,[int]$visual.ActualHeight,96,96,[Windows.Media.PixelFormats]::Pbgra32)
  $bitmap.Render($visual);$encoder=New-Object Windows.Media.Imaging.PngBitmapEncoder
  $encoder.Frames.Add([Windows.Media.Imaging.BitmapFrame]::Create($bitmap));$stream=New-Object IO.MemoryStream
