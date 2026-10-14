@@ -1,0 +1,66 @@
+name: Windows release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - MainWindow.xaml
+      - .github/workflows/release.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: windows-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: windows-2022
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: powershell
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Read version
+        run: |
+          $xaml = Get-Content MainWindow.xaml -Raw -Encoding UTF8
+          if ($xaml -notmatch 'Title="IPA Desktop[^"\r\n]*?(\d+\.\d+\.\d+)"') { throw 'Missing version in window title' }
+          "IPA_VERSION=$($Matches[1])" >> $env:GITHUB_ENV
+      - name: Build
+        shell: cmd
+        run: call Build.cmd < nul
+      - name: Verify application and IPA metadata
+        run: |
+          & powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File Verify.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Application verification failed' }
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File Verify-IpaMetadata.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Metadata verification failed' }
+      - name: Package
+        run: |
+          $files = @('IPA-Desktop.exe', 'IPA-Desktop.exe.config', 'MainWindow.xaml', 'Core.cs', 'IpaMetadata.cs', 'App.cs', 'Build.cmd', 'Start.cmd', 'Verify.ps1', 'Verify-IpaMetadata.ps1', 'README.md', 'LICENSE.txt')
+          Compress-Archive -LiteralPath $files -DestinationPath "IPA-Desktop-$env:IPA_VERSION-Windows.zip"
+      - name: Publish releases
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # Preserve the previously distributed 0.1.4 archive during migration.
+          $archives = @(Get-ChildItem downloads/IPA-Desktop-0.1.4-Windows.zip -ErrorAction SilentlyContinue)
+          $archives += Get-Item "IPA-Desktop-$env:IPA_VERSION-Windows.zip"
+          foreach ($archive in $archives) {
+            if ($archive.Name -notmatch '^IPA-Desktop-(\d+\.\d+\.\d+)-Windows.zip$') { throw 'Invalid archive name' }
+            $version = $Matches[1]
+            $tag = "v$version"
+            gh release view $tag --json tagName 2>$null
+            if ($LASTEXITCODE -eq 0) {
+              Write-Host "Release $tag already exists; leaving published assets unchanged."
+              continue
+            }
+            $latest = if ($version -eq $env:IPA_VERSION) { '--latest' } else { '--latest=false' }
+            gh release create $tag $archive.FullName --target $env:GITHUB_SHA --title "IPA Desktop $version" --notes "Windows 10/11 x64. Download the ZIP, extract all files and run IPA-Desktop.exe. Requires .NET Framework 4.6 or later." $latest
+            if ($LASTEXITCODE -ne 0) { throw "Failed to publish $tag" }
+          }
