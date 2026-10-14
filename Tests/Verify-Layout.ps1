@@ -35,7 +35,7 @@ try {
  $clean=Join-Path $temp 'clean extraction'
  [IO.Compression.ZipFile]::ExtractToDirectory($zip,$clean)
  [IpaDesktop.InstallationLayout]::Ensure($clean)
- $extract=Join-Path $temp 'new updater stage'
+ $extract=Join-Path $temp 'organized update/stage'
  [IpaDesktop.GuiUpdater]::Extract($zip,$extract)
  & (Join-Path $projectRoot 'Scripts/Update-App.ps1') -Stage $extract -Target $clean -NoRestart
  foreach($file in [IpaDesktop.GuiUpdater]::PackageFiles) {
