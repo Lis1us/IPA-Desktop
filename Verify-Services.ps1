@@ -34,6 +34,7 @@ public sealed class RecordingProcessRunner : IProcessRunner
 '@
 $temp=Join-Path ([IO.Path]::GetTempPath()) ('ipa-oop-'+[Guid]::NewGuid().ToString('N'))
 $window=$null
+$originalContext=[Threading.SynchronizationContext]::Current
 try {
  $runner=New-Object RecordingProcessRunner
  $engine=New-Object IpaDesktop.Engine($temp,$runner)
@@ -61,6 +62,7 @@ try {
  if($restored.Settings.CheckGuiUpdates -or $restored.Settings.AutoUpdate){throw 'Settings/rollback lost user update preferences'}
  $engine.Settings.Current='test';$engine.Save()
  Write-Host 'PASS: injectable process runner; download arguments; device names/UDIDs; local repository; update preferences'
+ [Threading.SynchronizationContext]::SetSynchronizationContext((New-Object Windows.Threading.DispatcherSynchronizationContext([Windows.Threading.Dispatcher]::CurrentDispatcher)))
  $desktop=New-Object IpaDesktop.Desktop($engine,$false,$PSScriptRoot)
  $window=$desktop.Window;$window.Show()
  function Pump {
@@ -122,5 +124,6 @@ try {
  Write-Host 'PASS: real controller composition; search/clear/selection/removal; IPA selection/removal; device button/names; account state'
 }finally{
  if($window){$window.Close()}
+ [Threading.SynchronizationContext]::SetSynchronizationContext($originalContext)
  if(Test-Path -LiteralPath $temp){Remove-Item -LiteralPath $temp -Recurse -Force}
 }
