@@ -31,10 +31,20 @@ namespace IpaDesktop {
   Window w;Engine engine;CancellationTokenSource cancellation;bool busy;bool setting;bool signedIn;
   readonly InstallationSelection installChosen=new InstallationSelection();
   readonly DownloadSelection chosen=new DownloadSelection();
+  long lastProgress;
   string versionApp; Release guiRelease; bool exitingForUpdate;
   T C<T>(string name) where T:class {return w.FindName(name) as T;}
   void On(string name,Action action) {C<Button>(name).Click+=delegate {try {action();}catch(Exception e){Error(e);}};}
-  void Log(string text) {w.Dispatcher.BeginInvoke(new Action(delegate {var j=C<TextBox>("Journal");if(j.Text.Length>180000)j.Text=j.Text.Substring(j.Text.Length-120000);j.AppendText(DateTime.Now.ToString("HH:mm:ss")+"  "+text+Environment.NewLine);j.ScrollToEnd();}));}
+  readonly BufferedJournal journalBuffer=new BufferedJournal();
+  System.Windows.Threading.DispatcherTimer journalTimer;
+  void Log(string text) {journalBuffer.Add(text);}
+  void FlushJournal() {
+   string text=journalBuffer.Drain();if(text.Length==0)return;
+   var j=C<TextBox>("Journal");
+   if(j.Text.Length>120000)j.Text=j.Text.Substring(j.Text.Length-80000);
+   j.AppendText(text);
+   if(j.IsVisible)j.ScrollToEnd();
+  }
   void Error(Exception e) {Log(e.Message);C<TextBlock>("Status").Text="Ошибка — подробности в журнале";MessageBox.Show(w,e.Message,"IPA Desktop",MessageBoxButton.OK,MessageBoxImage.Warning);}
   void StateView() {C<TextBlock>("EngineVersion").Text="Движок: "+(engine.Settings.Version??"не установлен");setting=true;C<CheckBox>("AutoUpdate").IsChecked=engine.Settings.AutoUpdate;setting=false;}
   void ApplyActions() {
@@ -120,6 +130,9 @@ namespace IpaDesktop {
   }
   public Desktop() {
    using(var stream=File.OpenRead(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"MainWindow.xaml")))w=(Window)XamlReader.Load(stream);
+   journalTimer=new System.Windows.Threading.DispatcherTimer(System.Windows.Threading.DispatcherPriority.Background,w.Dispatcher){Interval=TimeSpan.FromMilliseconds(150)};
+   journalTimer.Tick+=delegate {FlushJournal();};journalTimer.Start();
+   w.Closed+=delegate {journalTimer.Stop();};
    w.SourceInitialized+=delegate {WindowTheme.Apply(w);};
    w.Activated+=delegate {WindowTheme.Apply(w);};
    using(var icon=File.OpenRead(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"App.ico"))) {
@@ -127,7 +140,7 @@ namespace IpaDesktop {
     w.Icon=decoder.Frames[0];C<Image>("BrandIcon").Source=decoder.Frames[decoder.Frames.Count-1];
    }
    engine=new Engine(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"IPA-Desktop"));engine.Log=Log;
-   engine.Progress=delegate(double value) {w.Dispatcher.BeginInvoke(new Action(delegate {C<ProgressBar>("Progress").IsIndeterminate=false;C<ProgressBar>("Progress").Value=value;}));};
+   engine.Progress=delegate(double value) {long now=Stopwatch.GetTimestamp();if(value<100&&(now-lastProgress)/(double)Stopwatch.Frequency<0.15)return;lastProgress=now;w.Dispatcher.BeginInvoke(new Action(delegate {C<ProgressBar>("Progress").IsIndeterminate=false;C<ProgressBar>("Progress").Value=value;}));};
    StateView();RefreshFiles();C<ComboBox>("VersionList").Items.Add("Последняя версия");C<ComboBox>("VersionList").SelectedIndex=0;
    C<CheckBox>("CheckGuiUpdates").IsChecked=engine.Settings.CheckGuiUpdates;
    C<CheckBox>("CheckGuiUpdates").Click+=delegate {engine.Settings.CheckGuiUpdates=C<CheckBox>("CheckGuiUpdates").IsChecked==true;try {engine.Save();}catch(Exception e){Error(e);}};
@@ -272,7 +285,7 @@ namespace IpaDesktop {
    w.Closing+=delegate(object sender,System.ComponentModel.CancelEventArgs e){if(busy){e.Cancel=true;MessageBox.Show(w,"Сначала отмените текущую операцию и дождитесь её завершения.","Выполняется операция");}};
    ApplyActions();
    w.Loaded+=delegate {
-    Log("IPA Desktop 0.1.8. Файлы: "+engine.Downloads);
+    Log("IPA Desktop 0.1.9. Файлы: "+engine.Downloads);
     Work("Проверка движка и сохранённого входа…",async delegate(CancellationToken ct) {
      if(engine.Settings.CheckGuiUpdates) {
       try {await CheckGui(ct);}catch(OperationCanceledException){if(ct.IsCancellationRequested)throw;Log("Проверка IPA Desktop: время ожидания истекло.");}catch(Exception e){Log("Проверка IPA Desktop: "+e.Message);}

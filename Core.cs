@@ -61,6 +61,22 @@ namespace IpaDesktop {
   public static T Deserialize<T>(string value) {return Serializer.Deserialize<T>(value);}
   public static object DeserializeObject(string value) {return Serializer.DeserializeObject(value);}
  }
+ public class BufferedJournal {
+  readonly Queue<string> pending=new Queue<string>(); readonly object gate=new object(); int skipped;
+  public void Add(string text) {
+   if(text==null)return;
+   string line=DateTime.Now.ToString("HH:mm:ss")+"  "+(text.Length>2000?text.Substring(0,2000)+" …":text)+Environment.NewLine;
+   lock(gate) {if(pending.Count>=500){pending.Dequeue();skipped++;}pending.Enqueue(line);}
+  }
+  public string Drain() {
+   lock(gate) {
+    var result=new StringBuilder();
+    if(skipped>0){result.AppendLine("Слишком частый вывод: пропущено строк "+skipped+".");skipped=0;}
+    while(pending.Count>0&&result.Length<6000)result.Append(pending.Dequeue());
+    return result.ToString();
+   }
+  }
+ }
  public class Engine {
   public readonly string Root, Downloads;
   public State Settings;
@@ -71,7 +87,7 @@ namespace IpaDesktop {
   static HttpClient CreateHttp() {
    ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
    var h = new HttpClient(); h.Timeout = TimeSpan.FromMinutes(15);
-   h.DefaultRequestHeaders.UserAgent.ParseAdd("IPA-Desktop/0.1.8"); return h;
+   h.DefaultRequestHeaders.UserAgent.ParseAdd("IPA-Desktop/0.1.9"); return h;
   }
   public Engine(string root) {
    Root = root; Downloads = Path.Combine(Root,"Apps"); Directory.CreateDirectory(Downloads);
@@ -104,26 +120,63 @@ namespace IpaDesktop {
    foreach(char c in s) { if(c=='\\') {n++;continue;} if(c=='\"') {b.Append('\\',n*2+1);b.Append(c);} else {b.Append('\\',n);b.Append(c);} n=0; }
    b.Append('\\',n*2); return b.Append('"').ToString();
   }
-  public async Task<Result> Run(string exe, string[] args, CancellationToken token, bool visible, bool publish) {
-   var si=new ProcessStartInfo(exe,String.Join(" ",args.Select(Quote))) { WorkingDirectory=Downloads,UseShellExecute=false,CreateNoWindow=!visible };
-   si.EnvironmentVariables["PATH"]=Path.GetDirectoryName(exe)+";"+Environment.GetEnvironmentVariable("PATH");
-   if(!visible) {si.RedirectStandardInput=true;si.RedirectStandardOutput=true;si.RedirectStandardError=true;si.StandardOutputEncoding=Encoding.UTF8;si.StandardErrorEncoding=Encoding.UTF8;}
-   using(var p=new Process {StartInfo=si}) {
-    var output=new StringBuilder(); object gate=new object();
-    DataReceivedEventHandler receive=delegate(object sender,DataReceivedEventArgs e) {if(e.Data!=null) {lock(gate) {if(output.Length<15000000) output.AppendLine(e.Data);} if(publish) Log(e.Data);}};
-    if(!visible) {p.OutputDataReceived+=receive;p.ErrorDataReceived+=receive;}
-    p.Start(); Active=p;
-    if(!visible) {p.StandardInput.Close();p.BeginOutputReadLine();p.BeginErrorReadLine();}
-    try {
-     using(token.Register(delegate {try {if(!p.HasExited) p.Kill();}catch(InvalidOperationException) {}})) {await Task.Run(delegate {p.WaitForExit();});}
-     token.ThrowIfCancellationRequested(); return new Result {Code=p.ExitCode,Output=output.ToString()};
-    } finally {Active=null;}
-   }
+  public Task<Result> Run(string exe,string[] args,CancellationToken token,bool visible,bool publish) {
+   return Task.Run(delegate {
+    token.ThrowIfCancellationRequested();
+    var si=new ProcessStartInfo(exe,String.Join(" ",args.Select(Quote))) {WorkingDirectory=Downloads,UseShellExecute=false,CreateNoWindow=!visible};
+    si.EnvironmentVariables["PATH"]=Path.GetDirectoryName(exe)+";"+Environment.GetEnvironmentVariable("PATH");
+    if(!visible){si.RedirectStandardInput=true;si.RedirectStandardOutput=true;si.RedirectStandardError=true;si.StandardOutputEncoding=Encoding.UTF8;si.StandardErrorEncoding=Encoding.UTF8;}
+    using(var p=new Process {StartInfo=si}) {
+     var output=new StringBuilder();object gate=new object();
+     bool stdoutDone=visible,stderrDone=visible;long lastOutput=Stopwatch.GetTimestamp();
+     DataReceivedEventHandler stdout=delegate(object sender,DataReceivedEventArgs e) {
+      lock(gate) {
+       if(e.Data==null){stdoutDone=true;return;}
+       lastOutput=Stopwatch.GetTimestamp();int count=Math.Min(e.Data.Length,15000000-output.Length);
+       if(count>0){output.Append(e.Data,0,count);if(output.Length<15000000)output.AppendLine();}
+      }
+      if(publish)Log(e.Data);
+     };
+     DataReceivedEventHandler stderr=delegate(object sender,DataReceivedEventArgs e) {
+      if(e.Data==null){lock(gate){stderrDone=true;}return;}stdout(sender,e);
+     };
+     if(!visible){p.OutputDataReceived+=stdout;p.ErrorDataReceived+=stderr;}
+     var elapsed=Stopwatch.StartNew();long nextNotice=30;
+     try {
+      p.Start();Active=p;
+      if(!visible){p.StandardInput.Close();p.BeginOutputReadLine();p.BeginErrorReadLine();}
+      while(!p.WaitForExit(200)) {
+       if(token.IsCancellationRequested) {
+        try {p.Kill();}catch(InvalidOperationException){}
+        if(!p.WaitForExit(5000))throw new IOException("Не удалось остановить процесс. Завершите его через Диспетчер задач.");
+        token.ThrowIfCancellationRequested();
+       }
+       if(publish&&elapsed.Elapsed.TotalSeconds>=nextNotice) {
+        long last;lock(gate){last=lastOutput;}
+        Log("Процесс работает "+(int)elapsed.Elapsed.TotalSeconds+" с; без нового вывода "+(int)((Stopwatch.GetTimestamp()-last)/(double)Stopwatch.Frequency)+" с. При необходимости нажмите «Отмена».");
+        nextNotice+=30;
+       }
+      }
+      token.ThrowIfCancellationRequested();
+      // A child may keep a redirected pipe open after its parent exits.
+      // Never use an unbounded WaitForExit() to drain those pipes.
+      var drain=Stopwatch.StartNew();
+      while(drain.ElapsedMilliseconds<2000) {
+       lock(gate){if(stdoutDone&&stderrDone)break;}
+       token.ThrowIfCancellationRequested();Thread.Sleep(20);
+      }
+      lock(gate) {
+       if(!stdoutDone||!stderrDone)Log("Процесс завершился, но поток вывода не закрылся. Ожидание потока прекращено.");
+       return new Result{Code=p.ExitCode,Output=output.ToString()};
+      }
+     } finally {Active=null;}
+    }
+   },token);
   }
   public Task<Result> Tool(string[] args,CancellationToken ct,bool publish) {
-   return Run(Binary("ipatool*.exe"),args.Concat(new[]{"--format","json"}).ToArray(),ct,false,publish);
+   return Task.Run(async delegate {return await Run(Binary("ipatool*.exe"),args.Concat(new[]{"--format","json"}).ToArray(),ct,false,publish);},ct);
   }
-  public static void Ensure(Result r) {if(r.Code!=0) throw new Exception("Код ошибки "+r.Code+"\n"+r.Output);}
+  public static void Ensure(Result r) {if(r.Code!=0) throw new Exception("Код ошибки "+r.Code+"\n"+(r.Output.Length>8000?r.Output.Substring(r.Output.Length-8000):r.Output));}
   public static Dictionary<string,object> Object(string output) {
    // Structured output is sometimes preceded by a human-readable diagnostic.
    foreach(var line in output.Split('\n').Reverse()) {try {var d=JsonCodec.DeserializeObject(line.Trim()) as Dictionary<string,object>;if(d!=null)return d;}catch(ArgumentException){}}

@@ -51,5 +51,29 @@ try {
  $install.Remove('c:\apps\b.ipa')
  if($install.Count -ne 0){throw 'Path removal must ignore case on Windows'}
  Write-Host 'PASS: install queue deduplication, snapshots, refresh, missing files and removal'
+ $buffer=New-Object IpaDesktop.BufferedJournal
+ for($i=0;$i -lt 20000;$i++){$buffer.Add(('x'*3000))}
+ $total=0;$chunks=0
+ do {$chunk=$buffer.Drain();$total+=$chunk.Length;$chunks++;if($chunk.Length -gt 8200){throw 'Unbounded UI batch'}}while($chunk.Length -gt 0)
+ if($total -gt 1100000 -or $chunks -gt 200){throw 'Log buffer grew without limit'}
+ Write-Host 'PASS: log flood has bounded memory and UI batches'
+ $powershell=Join-Path $env:WINDIR 'System32/WindowsPowerShell/v1.0/powershell.exe'
+ $script='for($i=0;$i -lt 2000;$i++){[Console]::Out.WriteLine("OUT:"+$i);[Console]::Error.WriteLine("ERR:"+$i)}'
+ $encoded=[Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($script))
+ $timer=[Diagnostics.Stopwatch]::StartNew()
+ $task=$e.Run($powershell,[string[]]@('-NoProfile','-EncodedCommand',$encoded),[Threading.CancellationToken]::None,$false,$false)
+ if($timer.Elapsed.TotalSeconds -gt 1){throw 'Process launch blocked its caller'}
+ $result=$task.GetAwaiter().GetResult()
+ if($result.Code -ne 0 -or !$result.Output.Contains('OUT:1999') -or !$result.Output.Contains('ERR:1999')){throw 'Concurrent stdout/stderr output lost'}
+ Write-Host 'PASS: nonblocking launch and simultaneous stdout/stderr flood'
+ $encoded=[Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes('Start-Sleep -Seconds 60'))
+ $cancel=New-Object Threading.CancellationTokenSource
+ try {
+  $cancel.CancelAfter(400)
+  $timer.Restart();$cancelled=$false
+  try {$e.Run($powershell,[string[]]@('-NoProfile','-EncodedCommand',$encoded),$cancel.Token,$false,$false).GetAwaiter().GetResult()|Out-Null}catch{$cancelled=$cancel.IsCancellationRequested}
+  if(!$cancelled -or $timer.Elapsed.TotalSeconds -gt 8){throw 'Silent process cancellation did not complete promptly'}
+ }finally{$cancel.Dispose()}
+ Write-Host 'PASS: cancellation of a silent process'
  Write-Host 'PASS: settings, JSON, rollback, preserved downloads, WPF XAML' -ForegroundColor Green
 }finally{if(Test-Path $temp){Remove-Item -LiteralPath $temp -Recurse -Force}}
