@@ -10,4 +10,3 @@ state.json
 .vs/
 bin/
 obj/
-!downloads/*.zip

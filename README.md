@@ -6,7 +6,7 @@
 
 ## Скачать и запустить
 
-[Скачать IPA Desktop 0.1.5 для Windows](https://github.com/Lis1us/IPA-Desktop/raw/refs/heads/main/downloads/IPA-Desktop-0.1.5-Windows.zip)
+[Скачать IPA Desktop 0.1.5 для Windows](https://github.com/Lis1us/IPA-Desktop/releases/download/v0.1.5/IPA-Desktop-0.1.5-Windows.zip)
 
 1. Полностью распакуйте ZIP в отдельную папку.
 2. Запустите `IPA-Desktop.exe`. Оставьте `MainWindow.xaml` и `IPA-Desktop.exe.config` рядом.
@@ -73,3 +73,7 @@ GUI непосредственно запускает утилиты из арх
 Во вкладке «Файлы и устройство» добавлена колонка **Apple Account**. Значение читается из поля `appleId` / `AppleID` внутри `iTunesMetadata.plist` каждого IPA (XML и бинарный plist). Работает также для импортированных файлов; текущий вход в программе не подставляется вместо владельца файла.
 
 Если данных нет, показано «Не указан»; при повреждении файла — «Не удалось прочитать». Метаданные не являются проверкой прав установки со стороны Apple. Имя владельца из `userName` не считается адресом аккаунта. Чтение списка выполняется в фоне. Адреса остаются в локальном интерфейсе, не отправляются на GitHub и не сохраняются в исходниках.
+
+## Публикация сборок
+
+Готовые ZIP размещаются в [GitHub Releases](https://github.com/Lis1us/IPA-Desktop/releases). При изменении номера версии в `MainWindow.xaml` в ветке `main` GitHub Actions собирает приложение на Windows, запускает проверки и публикует новый релиз. Уже опубликованные версии не перезаписываются. Workflow также можно запустить вручную через Actions / Windows release / Run workflow.
