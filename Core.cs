@@ -36,6 +36,16 @@ namespace IpaDesktop {
   public void Remove(string id) {items.RemoveAll(x=>x.ID==id);}
   public void Clear() {items.Clear();}
  }
+ public class DeviceRow {
+  public string ID {get;set;} public string Name {get;set;}
+  public override string ToString() {return Name;}
+ }
+ public class SearchSession {
+  int revision;string query="";
+  public int Change(string value) {query=(value??"").Trim();return ++revision;}
+  public int Revision {get {return revision;}}
+  public bool IsCurrent(int request) {return request==revision&&query.Length>0;}
+ }
  public class LocalRow { public string AppleAccount {get;set;} public string Name {get;set;} public string Size {get;set;} public string Path {get;set;} }
  public class InstallationSelection {
   readonly List<LocalRow> items=new List<LocalRow>();
@@ -87,7 +97,7 @@ namespace IpaDesktop {
   static HttpClient CreateHttp() {
    ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
    var h = new HttpClient(); h.Timeout = TimeSpan.FromMinutes(15);
-   h.DefaultRequestHeaders.UserAgent.ParseAdd("IPA-Desktop/0.1.9"); return h;
+   h.DefaultRequestHeaders.UserAgent.ParseAdd("IPA-Desktop/0.1.10"); return h;
   }
   public Engine(string root) {
    Root = root; Downloads = Path.Combine(Root,"Apps"); Directory.CreateDirectory(Downloads);

@@ -75,5 +75,17 @@ try {
   if(!$cancelled -or $timer.Elapsed.TotalSeconds -gt 8){throw 'Silent process cancellation did not complete promptly'}
  }finally{$cancel.Dispose()}
  Write-Host 'PASS: cancellation of a silent process'
+ $search=New-Object IpaDesktop.SearchSession
+ $request=$search.Change('MAX')
+ if(!$search.IsCurrent($request)){throw 'Current query rejected'}
+ [void]$search.Change('')
+ if($search.IsCurrent($request)){throw 'Cleared query accepted a late search reply'}
+ $request=$search.Change('Telegram');[void]$search.Change('   ')
+ if($search.IsCurrent($request)){throw 'Whitespace query accepted a late search reply'}
+ $request=$search.Change('MAX');[void]$search.Change('Telegram')
+ if($search.IsCurrent($request)){throw 'Changed query accepted obsolete results'}
+ $device=New-Object IpaDesktop.DeviceRow;$device.Name='My iPhone';$device.ID='00008030-0000111ABC000DEF'
+ if($device.ToString() -ne 'My iPhone' -or $device.ID -eq $device.ToString()){throw 'Device name replaced its installation ID'}
+ Write-Host 'PASS: cleared and changed searches reject late replies; device labels retain separate UDIDs'
  Write-Host 'PASS: settings, JSON, rollback, preserved downloads, WPF XAML' -ForegroundColor Green
 }finally{if(Test-Path $temp){Remove-Item -LiteralPath $temp -Recurse -Force}}

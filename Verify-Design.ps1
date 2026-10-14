@@ -53,6 +53,43 @@ try {
   }
   if(![object]::ReferenceEquals($script:clickedItem,$grid.Items[0])){throw 'Left click did not add the correct data row'}
  }
+ function FindButton($node) {
+  if($node -is [Windows.Controls.Button] -and $node.Tag){return $node}
+  for($i=0;$i -lt [Windows.Media.VisualTreeHelper]::GetChildrenCount($node);$i++) {
+   $result=FindButton ([Windows.Media.VisualTreeHelper]::GetChild($node,$i));if($result){return $result}
+  }
+ }
+ foreach($pair in @(@('ChosenApps',0),@('ChosenFiles',1))) {
+  $tabs.SelectedIndex=$pair[1]
+  $window.Dispatcher.Invoke([Action]{},[Windows.Threading.DispatcherPriority]::ApplicationIdle);$window.UpdateLayout()
+  $list=$window.FindName($pair[0]);$button=FindButton $list
+  if(!$button){throw 'No generated remove button'}
+  $script:removedKey=$null
+  [IpaDesktop.SelectionRemove]::Attach($list,[Action[string]]{param($key) $script:removedKey=$key})
+  $button.RaiseEvent((New-Object Windows.RoutedEventArgs([Windows.Controls.Button]::ClickEvent,$button)))
+  if($script:removedKey -ne [string]$button.Tag){throw 'Remove button did not deliver the correct ID/path'}
+ }
+ Write-Host 'PASS: remove button clicks through both actual WPF item templates'
+ $journal=$window.FindName('Journal');$buffer=New-Object IpaDesktop.BufferedJournal
+ [IpaDesktop.JournalView]::Attach($journal,$buffer)
+ $tabs.SelectedIndex=0
+ 1..250|ForEach-Object{$journal.AppendText("old line $_"+[Environment]::NewLine)}
+ $buffer.Add('latest hidden message')
+ $tabs.SelectedIndex=3
+ $window.Dispatcher.Invoke([Action]{},[Windows.Threading.DispatcherPriority]::ApplicationIdle);$window.UpdateLayout()
+ if(!$journal.Text.Contains('latest hidden message')){throw 'Journal tab did not flush pending messages'}
+ $journal.ScrollToHome()
+ $tabs.SelectedIndex=0;$tabs.SelectedIndex=3
+ $window.Dispatcher.Invoke([Action]{},[Windows.Threading.DispatcherPriority]::ApplicationIdle);$window.UpdateLayout()
+ if($journal.VerticalOffset -lt ($journal.ExtentHeight-$journal.ViewportHeight-1)){throw 'Journal did not scroll to the latest line on entry'}
+ $buffer.Add('latest live message');[IpaDesktop.JournalView]::Flush($journal,$buffer,$false)
+ $window.Dispatcher.Invoke([Action]{},[Windows.Threading.DispatcherPriority]::ApplicationIdle);$window.UpdateLayout()
+ if(!$journal.Text.Contains('latest live message') -or $journal.VerticalOffset -lt ($journal.ExtentHeight-$journal.ViewportHeight-1)){throw 'Live journal did not follow new messages'}
+ Write-Host 'PASS: journal latest entries on tab switch and live auto-scroll'
+ $device=New-Object IpaDesktop.DeviceRow;$device.Name='Test iPhone';$device.ID='00008030-0000111ABC000DEF'
+ $window.FindName('DeviceList').ItemsSource=[IpaDesktop.DeviceRow[]]@($device)
+ $window.FindName('DeviceList').SelectedIndex=0
+ if($window.FindName('DeviceList').SelectedItem.ID -ne $device.ID -or $window.FindName('DeviceList').DisplayMemberPath -ne 'Name'){throw 'Named device selection lost its UDID'}
  Write-Host 'PASS: routed left-click selection on search and local IPA grids'
  $tabs.SelectedIndex=0
  $window.Width=940;$window.Height=720;$window.Dispatcher.Invoke([Action]{},[Windows.Threading.DispatcherPriority]::ApplicationIdle);$window.UpdateLayout()
