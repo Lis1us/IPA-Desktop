@@ -41,17 +41,23 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Application verification failed' }
           & powershell.exe -NoProfile -ExecutionPolicy Bypass -File Verify-IpaMetadata.ps1
           if ($LASTEXITCODE -ne 0) { throw 'Metadata verification failed' }
+      - name: Verify updater
+        run: |
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File Verify-Updater.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Updater verification failed' }
+      - name: Verify design
+        run: |
+          & powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File Verify-Design.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Design verification failed' }
       - name: Package
         run: |
-          $files = @('IPA-Desktop.exe', 'IPA-Desktop.exe.config', 'MainWindow.xaml', 'Core.cs', 'IpaMetadata.cs', 'App.cs', 'Build.cmd', 'Start.cmd', 'Verify.ps1', 'Verify-IpaMetadata.ps1', 'README.md', 'LICENSE.txt')
+          $files = @('IPA-Desktop.exe', 'IPA-Desktop.exe.config', 'MainWindow.xaml', 'Core.cs', 'IpaMetadata.cs', 'App.cs', 'Build.cmd', 'Start.cmd', 'Verify.ps1', 'Verify-IpaMetadata.ps1', 'README.md', 'LICENSE.txt', 'App.ico', 'App.svg', 'WindowTheme.cs', 'GuiUpdater.cs', 'Update-App.ps1', 'Verify-Updater.ps1')
           Compress-Archive -LiteralPath $files -DestinationPath "IPA-Desktop-$env:IPA_VERSION-Windows.zip"
       - name: Publish releases
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          # Preserve the previously distributed 0.1.4 archive during migration.
-          $archives = @(Get-ChildItem downloads/IPA-Desktop-0.1.4-Windows.zip -ErrorAction SilentlyContinue)
-          $archives += Get-Item "IPA-Desktop-$env:IPA_VERSION-Windows.zip"
+          $archives = Get-Item "IPA-Desktop-$env:IPA_VERSION-Windows.zip"
           foreach ($archive in $archives) {
             if ($archive.Name -notmatch '^IPA-Desktop-(\d+\.\d+\.\d+)-Windows.zip$') { throw 'Invalid archive name' }
             $version = $Matches[1]

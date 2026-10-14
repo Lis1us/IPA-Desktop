@@ -14,7 +14,7 @@ using System.Web.Script.Serialization;
 
 namespace IpaDesktop {
  public class Result { public int Code; public string Output; }
- public class State { public string Current; public string Previous; public string Version; public string PreviousVersion; public bool AutoUpdate = true; }
+ public class State { public string Current; public string Previous; public string Version; public string PreviousVersion; public bool AutoUpdate = true; public bool CheckGuiUpdates = true; }
  public class Release { public string tag_name; public string html_url; public string body; public Asset[] assets; }
  public class Asset { public string name; public string browser_download_url; public string digest; public long size; }
  public class AppRow { public string Name {get;set;} public string ID {get;set;} }
@@ -35,7 +35,7 @@ namespace IpaDesktop {
   static HttpClient CreateHttp() {
    ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
    var h = new HttpClient(); h.Timeout = TimeSpan.FromMinutes(15);
-   h.DefaultRequestHeaders.UserAgent.ParseAdd("IPA-Desktop/0.1.5"); return h;
+   h.DefaultRequestHeaders.UserAgent.ParseAdd("IPA-Desktop/0.1.6"); return h;
   }
   public Engine(string root) {
    Root = root; Downloads = Path.Combine(Root,"Apps"); Directory.CreateDirectory(Downloads);

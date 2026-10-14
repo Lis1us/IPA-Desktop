@@ -14,26 +14,27 @@ using Microsoft.Win32;
 namespace IpaDesktop {
  public class Desktop {
   Window w;Engine engine;CancellationTokenSource cancellation;bool busy;bool setting;bool signedIn;
-  string versionApp;
+  string versionApp; Release guiRelease; bool exitingForUpdate;
   T C<T>(string name) where T:class {return w.FindName(name) as T;}
   void On(string name,Action action) {C<Button>(name).Click+=delegate {try {action();}catch(Exception e){Error(e);}};}
   void Log(string text) {w.Dispatcher.BeginInvoke(new Action(delegate {var j=C<TextBox>("Journal");if(j.Text.Length>180000)j.Text=j.Text.Substring(j.Text.Length-120000);j.AppendText(DateTime.Now.ToString("HH:mm:ss")+"  "+text+Environment.NewLine);j.ScrollToEnd();}));}
   void Error(Exception e) {Log(e.Message);C<TextBlock>("Status").Text="Ошибка — подробности в журнале";MessageBox.Show(w,e.Message,"IPA Desktop",MessageBoxButton.OK,MessageBoxImage.Warning);}
   void StateView() {C<TextBlock>("EngineVersion").Text="Движок: "+(engine.Settings.Version??"не установлен");setting=true;C<CheckBox>("AutoUpdate").IsChecked=engine.Settings.AutoUpdate;setting=false;}
   void ApplyActions() {
+   C<Button>("InstallGuiUpdate").IsEnabled=!busy&&guiRelease!=null;
    C<Button>("Login").IsEnabled=!busy&&!signedIn;
    C<Button>("Logout").IsEnabled=!busy&&signedIn;
    C<Button>("VersionInfo").IsEnabled=!busy&&C<DataGrid>("Apps").SelectedItems.Count==1;
   }
   async void Work(string title,Func<CancellationToken,Task> action) {
    if(busy)return;busy=true;cancellation=new CancellationTokenSource();
-   string[] buttons={"Login","AccountInfo","Logout","Search","Versions","VersionInfo","Download","RefreshFiles","ImportFile","DeleteFiles","Devices","InstallFiles","CheckUpdate","Rollback"};
+   string[] buttons={"Login","AccountInfo","Logout","Search","Versions","VersionInfo","Download","RefreshFiles","ImportFile","DeleteFiles","Devices","InstallFiles","CheckUpdate","Rollback","CheckGuiUpdate","InstallGuiUpdate"};
    foreach(var name in buttons)C<Button>(name).IsEnabled=false;
-   C<CheckBox>("AutoUpdate").IsEnabled=false;C<Button>("Cancel").IsEnabled=true;C<ProgressBar>("Progress").IsIndeterminate=true;C<TextBlock>("Status").Text=title;Log(title);
+   C<CheckBox>("CheckGuiUpdates").IsEnabled=false;C<CheckBox>("AutoUpdate").IsEnabled=false;C<Button>("Cancel").IsEnabled=true;C<ProgressBar>("Progress").IsIndeterminate=true;C<TextBlock>("Status").Text=title;Log(title);
    try {await action(cancellation.Token);C<TextBlock>("Status").Text="Готово";}
    catch(OperationCanceledException){Log("Операция отменена.");C<TextBlock>("Status").Text="Отменено";}
    catch(Exception e){Error(e);}
-   finally {busy=false;cancellation.Dispose();cancellation=null;foreach(var name in buttons)C<Button>(name).IsEnabled=true;C<CheckBox>("AutoUpdate").IsEnabled=true;C<Button>("Cancel").IsEnabled=false;C<ProgressBar>("Progress").IsIndeterminate=false;C<ProgressBar>("Progress").Value=0;StateView();RefreshFiles();ApplyActions();}
+   finally {busy=false;cancellation.Dispose();cancellation=null;foreach(var name in buttons)C<Button>(name).IsEnabled=true;C<CheckBox>("CheckGuiUpdates").IsEnabled=true;C<CheckBox>("AutoUpdate").IsEnabled=true;C<Button>("Cancel").IsEnabled=false;C<ProgressBar>("Progress").IsIndeterminate=false;C<ProgressBar>("Progress").Value=0;StateView();RefreshFiles();ApplyActions();if(exitingForUpdate)w.Close();}
   }
   List<AppRow> SelectedApps() {
    var rows=C<DataGrid>("Apps").SelectedItems.Cast<AppRow>().ToList();
@@ -68,11 +69,37 @@ namespace IpaDesktop {
    await engine.Install(release,ct);
    if(startup)Log("Автоматическое обновление завершено.");
   }
+  async Task CheckGui(CancellationToken ct) {
+   guiRelease=await GuiUpdater.Check(ct);
+   string text=guiRelease==null?"Установлена актуальная версия "+GuiUpdater.CurrentVersion:"Доступна версия "+guiRelease.tag_name;
+   C<TextBlock>("GuiVersionStatus").Text=text;
+   C<Button>("InstallGuiUpdate").Content=guiRelease==null?"Установить обновление":"Обновить до "+guiRelease.tag_name;
+   C<TextBlock>("UpdateNotice").Text=guiRelease==null?"":text+" — вкладка «Обновления»";
+   Log(text);
+  }
   public Desktop() {
    using(var stream=File.OpenRead(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"MainWindow.xaml")))w=(Window)XamlReader.Load(stream);
+   w.SourceInitialized+=delegate {WindowTheme.Apply(w);};
+   w.Activated+=delegate {WindowTheme.Apply(w);};
+   using(var icon=File.OpenRead(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"App.ico"))) {
+    var decoder=new System.Windows.Media.Imaging.IconBitmapDecoder(icon,System.Windows.Media.Imaging.BitmapCreateOptions.PreservePixelFormat,System.Windows.Media.Imaging.BitmapCacheOption.OnLoad);
+    w.Icon=decoder.Frames[0];C<Image>("BrandIcon").Source=decoder.Frames[decoder.Frames.Count-1];
+   }
    engine=new Engine(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"IPA-Desktop"));engine.Log=Log;
    engine.Progress=delegate(double value) {w.Dispatcher.BeginInvoke(new Action(delegate {C<ProgressBar>("Progress").IsIndeterminate=false;C<ProgressBar>("Progress").Value=value;}));};
    StateView();RefreshFiles();C<ComboBox>("VersionList").Items.Add("Последняя версия");C<ComboBox>("VersionList").SelectedIndex=0;
+   C<CheckBox>("CheckGuiUpdates").IsChecked=engine.Settings.CheckGuiUpdates;
+   C<CheckBox>("CheckGuiUpdates").Click+=delegate {engine.Settings.CheckGuiUpdates=C<CheckBox>("CheckGuiUpdates").IsChecked==true;try {engine.Save();}catch(Exception e){Error(e);}};
+   On("CheckGuiUpdate",delegate {Work("Проверка версии IPA Desktop…",CheckGui);});
+   On("InstallGuiUpdate",delegate {
+    if(guiRelease==null)return;
+    if(MessageBox.Show(w,"Скачать и установить IPA Desktop "+guiRelease.tag_name+"? Программа закроется и запустится снова. Скачанные IPA и настройки сохранятся.","Обновление программы",MessageBoxButton.YesNo,MessageBoxImage.Question,MessageBoxResult.No)!=MessageBoxResult.Yes)return;
+    Work("Скачивание обновления IPA Desktop…",async delegate(CancellationToken ct) {
+     string stage=await GuiUpdater.Prepare(guiRelease,ct,delegate(double value){w.Dispatcher.BeginInvoke(new Action(delegate {C<ProgressBar>("Progress").IsIndeterminate=false;C<ProgressBar>("Progress").Value=value;}));});
+     ct.ThrowIfCancellationRequested();GuiUpdater.Launch(stage);exitingForUpdate=true;
+    });
+   });
+   On("OpenGuiReleases",delegate {Process.Start(new ProcessStartInfo("https://github.com/Lis1us/IPA-Desktop/releases"){UseShellExecute=true});});
    On("Cancel",delegate {if(cancellation!=null)cancellation.Cancel();});
    On("OpenFolder",delegate {Process.Start(new ProcessStartInfo(engine.Downloads){UseShellExecute=true});});
    On("OpenRelease",delegate {Process.Start(new ProcessStartInfo("https://github.com/kda2495/IPA_Downloader/releases"){UseShellExecute=true});});
@@ -141,8 +168,11 @@ namespace IpaDesktop {
    w.Closing+=delegate(object sender,System.ComponentModel.CancelEventArgs e){if(busy){e.Cancel=true;MessageBox.Show(w,"Сначала отмените текущую операцию и дождитесь её завершения.","Выполняется операция");}};
    ApplyActions();
    w.Loaded+=delegate {
-    Log("IPA Desktop 0.1.5. Файлы: "+engine.Downloads);
+    Log("IPA Desktop 0.1.6. Файлы: "+engine.Downloads);
     Work("Проверка движка и сохранённого входа…",async delegate(CancellationToken ct) {
+     if(engine.Settings.CheckGuiUpdates) {
+      try {await CheckGui(ct);}catch(OperationCanceledException){if(ct.IsCancellationRequested)throw;Log("Проверка IPA Desktop: время ожидания истекло.");}catch(Exception e){Log("Проверка IPA Desktop: "+e.Message);}
+     }
      if(engine.Settings.AutoUpdate) {
       try {await Update(ct,true);}catch(OperationCanceledException){throw;}catch(Exception e){Log("Не удалось обновить движок: "+e.Message);}
      }
