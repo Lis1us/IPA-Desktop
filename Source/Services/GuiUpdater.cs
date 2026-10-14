@@ -14,10 +14,34 @@ namespace IpaDesktop
 {
     public static class GuiUpdater
     {
-        public const string CurrentVersion = "0.1.12";
+        public const string CurrentVersion = "0.1.13";
         public static readonly string[] PackageFiles =
         {
-            "IPA-Desktop.exe", "IPA-Desktop.exe.config", "MainWindow.xaml", "App.ico", "Update-App.ps1", "Core.cs", "App.cs", "IpaMetadata.cs", "WindowTheme.cs", "GuiUpdater.cs", "Build.cmd", "Start.cmd", "README.md", "LICENSE.txt", "Verify.ps1", "Verify-IpaMetadata.ps1", "Verify-Updater.ps1"
+            "IPA-Desktop.exe",
+            "IPA-Desktop.exe.config",
+            "MainWindow.xaml",
+            "Build.cmd",
+            "Start.cmd",
+            "README.md",
+            "LICENSE.txt",
+            "Docs/ARCHITECTURE.md",
+            "Assets/App.ico",
+            "Assets/App.svg",
+            "Scripts/Update-App.ps1",
+            "Scripts/Sync-Sources.ps1",
+            "Scripts/Resources.rsp",
+            "Generated/Core.cs",
+            "Generated/App.cs",
+            "Generated/IpaMetadata.cs",
+            "Generated/WindowTheme.cs",
+            "Generated/GuiUpdater.cs",
+            "Tests/Verify.ps1",
+            "Tests/Verify-IpaMetadata.ps1",
+            "Tests/Verify-Updater.ps1",
+            "Tests/Verify-Design.ps1",
+            "Tests/Verify-Services.ps1",
+            "Tests/Verify-Layout.ps1",
+            "Tests/Fixtures/Legacy-Update-App.ps1"
         };
         public static Version ParseVersion(string tag)
         {
@@ -71,7 +95,12 @@ namespace IpaDesktop
                     if (total > 128 * 1024 * 1024) throw new InvalidDataException("Пакет слишком велик.");
                 }
                 Directory.CreateDirectory(stage);
-                foreach (var name in PackageFiles) archive.GetEntry(name).ExtractToFile(Path.Combine(stage, name));
+                foreach (var name in PackageFiles)
+                {
+                    string destination = Path.Combine(stage, name);
+                    Directory.CreateDirectory(Path.GetDirectoryName(destination));
+                    archive.GetEntry(name).ExtractToFile(destination);
+                }
             }
         }
         public static async Task<string> Prepare(Release release, CancellationToken ct, Action<double> progress)
@@ -144,7 +173,7 @@ namespace IpaDesktop
             File.WriteAllText(probe, "");
             File.Delete(probe);
             string helper = Path.Combine(Path.GetDirectoryName(stage), "Apply.ps1");
-            File.Copy(Path.Combine(target, "Update-App.ps1"), helper);
+            File.Copy(Path.Combine(target, "Scripts", "Update-App.ps1"), helper);
             string command = "& " + QuotePS(helper) + " -Stage " + QuotePS(stage) + " -Target " + QuotePS(target) + " -ParentId " + Process.GetCurrentProcess().Id;
             string encoded = Convert.ToBase64String(Encoding.Unicode.GetBytes(command));
             Process.Start(new ProcessStartInfo(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "WindowsPowerShell", "v1.0", "powershell.exe"), "-NoProfile -ExecutionPolicy Bypass -EncodedCommand " + encoded)

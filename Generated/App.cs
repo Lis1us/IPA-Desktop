@@ -220,6 +220,7 @@ namespace IpaDesktop
         }
         public Desktop(Engine backend, bool checkAtStartup, string assetDirectory)
         {
+            InstallationLayout.Ensure(assetDirectory);
             using (var stream = File.OpenRead(Path.Combine(assetDirectory, "MainWindow.xaml"))) w = (Window) XamlReader.Load(stream);
             journalTimer = new System.Windows.Threading.DispatcherTimer(System.Windows.Threading.DispatcherPriority.Background, w.Dispatcher)
             {
@@ -243,7 +244,7 @@ namespace IpaDesktop
             {
                 WindowTheme.Apply(w);
             };
-            using (var icon = File.OpenRead(Path.Combine(assetDirectory, "App.ico")))
+            using (var icon = File.OpenRead(Path.Combine(assetDirectory, "Assets", "App.ico")))
             {
                 var decoder = new System.Windows.Media.Imaging.IconBitmapDecoder(icon, System.Windows.Media.Imaging.BitmapCreateOptions.PreservePixelFormat, System.Windows.Media.Imaging.BitmapCacheOption.OnLoad);
                 w.Icon = decoder.Frames[0];
@@ -290,7 +291,7 @@ namespace IpaDesktop
             ApplyActions();
             w.Loaded += delegate
             {
-                Log("IPA Desktop 0.1.12. Файлы: " + engine.Downloads);
+                Log("IPA Desktop 0.1.13. Файлы: " + engine.Downloads);
                 if (!checkAtStartup) return;
                 Work("Проверка движка и сохранённого входа…", async delegate(CancellationToken ct)
                 {

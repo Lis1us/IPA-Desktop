@@ -1,5 +1,6 @@
+$projectRoot=Split-Path $PSScriptRoot -Parent
 $ErrorActionPreference='Stop'
-[Reflection.Assembly]::LoadFrom((Join-Path $PSScriptRoot 'IPA-Desktop.exe'))|Out-Null
+[Reflection.Assembly]::LoadFrom((Join-Path $projectRoot 'IPA-Desktop.exe'))|Out-Null
 Add-Type -AssemblyName System.IO.Compression,System.IO.Compression.FileSystem
 $temp=Join-Path ([IO.Path]::GetTempPath()) ("ipa updater's test "+[Guid]::NewGuid().ToString('N'))
 try {
@@ -26,11 +27,12 @@ try {
  $target=Join-Path $temp 'target'
  New-Item -ItemType Directory -Path $stage,$target|Out-Null
  foreach($file in $files) {
+  New-Item -ItemType Directory -Path (Split-Path (Join-Path $stage $file) -Parent),(Split-Path (Join-Path $target $file) -Parent) -Force|Out-Null
   [IO.File]::WriteAllText((Join-Path $stage $file),"new:$file")
   [IO.File]::WriteAllText((Join-Path $target $file),"old:$file")
  }
  [IO.File]::WriteAllText((Join-Path $target 'keep.ipa'),'keep')
- & (Join-Path $PSScriptRoot 'Update-App.ps1') -Stage $stage -Target $target -NoRestart
+ & (Join-Path $projectRoot 'Scripts/Update-App.ps1') -Stage $stage -Target $target -NoRestart
  foreach($file in $files){if([IO.File]::ReadAllText((Join-Path $target $file)) -ne "new:$file"){throw 'Update copy failed'}}
  if([IO.File]::ReadAllText((Join-Path $target 'keep.ipa')) -ne 'keep'){throw 'User file changed'}
  Write-Host 'PASS: update installation, spaces/apostrophes in paths, preserved user files'
@@ -40,7 +42,7 @@ try {
  $lock=[IO.File]::Open((Join-Path $target $files[1]),[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read)
  try {
   $rejected=$false
-  try {& (Join-Path $PSScriptRoot 'Update-App.ps1') -Stage $stage -Target $target -NoRestart}catch{$rejected=$true}
+  try {& (Join-Path $projectRoot 'Scripts/Update-App.ps1') -Stage $stage -Target $target -NoRestart}catch{$rejected=$true}
   if(!$rejected){throw 'Locked destination was overwritten'}
  }finally{$lock.Dispose()}
  foreach($file in $files){if([IO.File]::ReadAllText((Join-Path $target $file)) -ne "old:$file"){throw "Rollback failed: $file"}}
@@ -49,9 +51,9 @@ try {
  [IO.Compression.ZipFile]::CreateFromDirectory($stage,$zip)
  $unpacked=Join-Path $temp 'unpacked'
  [IpaDesktop.GuiUpdater]::Extract($zip,$unpacked)
- if(!(Test-Path -LiteralPath (Join-Path $unpacked 'App.ico'))){throw 'Extraction failed'}
+ if(!(Test-Path -LiteralPath (Join-Path $unpacked 'Assets/App.ico'))){throw 'Extraction failed'}
  Remove-Item -LiteralPath $zip
- Remove-Item -LiteralPath (Join-Path $stage 'App.ico')
+ Remove-Item -LiteralPath (Join-Path $stage 'Assets/App.ico')
  [IO.Compression.ZipFile]::CreateFromDirectory($stage,$zip)
  $rejected=$false
  try {[IpaDesktop.GuiUpdater]::Extract($zip,(Join-Path $temp 'incomplete'))}catch{$rejected=$true}

@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="App.svg" width="88" alt="Иконка IPA Desktop">
+  <img src="Assets/App.svg" width="88" alt="Иконка IPA Desktop">
 </p>
 
 # IPA Desktop
@@ -181,16 +181,25 @@ IPA Desktop — независимый графический интерфейс
 - **Services** — каталог, загрузки, устройства и обновления.
 - **Presentation** — окно и контроллеры вкладок.
 
-Классы находятся в [Source](Source). Подробности, сборка и проверки описаны в [ARCHITECTURE.md](ARCHITECTURE.md).
+| Папка | Содержимое |
+|---|---|
+| [Assets](Assets) | Иконка Windows и исходник SVG |
+| [Tests](Tests) | Проверки компонентов, интерфейса, обновления и структуры пакета |
+| [Scripts](Scripts) | Синхронизация исходников, упаковка и установка обновлений |
+| [Docs](Docs) | Описание архитектуры |
+| [Source](Source) | Классы для разработки |
+| [Generated](Generated) | Автоматические копии исходников для переносимой сборки |
+
+ Подробности, сборка и проверки описаны в [ARCHITECTURE.md](Docs/ARCHITECTURE.md).
 
 После изменения классов синхронизируйте переносимые файлы сборки и запустите компилятор:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File Sync-Sources.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File Scripts/Sync-Sources.ps1
 .\Build.cmd
 ```
 
-Используется штатный компилятор .NET Framework; Visual Studio и NuGet для этой сборки не требуются. Корневые `.cs`-файлы генерируются из `Source` и сохраняют совместимость с обновлением предыдущих версий.
+Используется штатный компилятор .NET Framework; Visual Studio и NuGet для этой сборки не требуются. Файлы в `Generated` генерируются из `Source` и сохраняют совместимость с обновлением предыдущих версий.
 
 GitHub Actions проверяет код на Windows, собирает ZIP и публикует его в Releases. Для каждой версии требуется чейнджлог в [changelogs](changelogs).
 

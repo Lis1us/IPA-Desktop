@@ -1,5 +1,6 @@
-﻿$ErrorActionPreference='Stop'
-[Reflection.Assembly]::LoadFrom((Join-Path $PSScriptRoot 'IPA-Desktop.exe'))|Out-Null
+$projectRoot=Split-Path $PSScriptRoot -Parent
+$ErrorActionPreference='Stop'
+[Reflection.Assembly]::LoadFrom((Join-Path $projectRoot 'IPA-Desktop.exe'))|Out-Null
 $temp=Join-Path ([IO.Path]::GetTempPath()) ('ipa-metadata-tests-'+[Guid]::NewGuid().ToString('N'))
 [IO.Directory]::CreateDirectory($temp)|Out-Null
 $cases=@(

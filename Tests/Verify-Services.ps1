@@ -1,8 +1,9 @@
+$projectRoot=Split-Path $PSScriptRoot -Parent
 $ErrorActionPreference='Stop'
 Add-Type -AssemblyName PresentationFramework,PresentationCore,WindowsBase,System.Xaml
-[Reflection.Assembly]::LoadFrom((Join-Path $PSScriptRoot 'IPA-Desktop.exe'))|Out-Null
-Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'IPA-Desktop.exe') -Destination (Join-Path $PSScriptRoot 'IPA-Desktop-test.dll') -Force
-Add-Type -ReferencedAssemblies @((Join-Path $PSScriptRoot 'IPA-Desktop-test.dll'),'System.dll','System.Core.dll') -TypeDefinition @'
+[Reflection.Assembly]::LoadFrom((Join-Path $projectRoot 'IPA-Desktop.exe'))|Out-Null
+Copy-Item -LiteralPath (Join-Path $projectRoot 'IPA-Desktop.exe') -Destination (Join-Path $projectRoot 'IPA-Desktop-test.dll') -Force
+Add-Type -ReferencedAssemblies @((Join-Path $projectRoot 'IPA-Desktop-test.dll'),'System.dll','System.Core.dll') -TypeDefinition @'
 using System;
 using System.IO;
 using System.Collections.Generic;
@@ -97,7 +98,10 @@ try {
  Write-Host 'PASS: absent, stopped, missing service, running without MSI record and unknown inspection states'
  Write-Host 'PASS: injectable process runner; download arguments; device names/UDIDs; local repository; update preferences'
  [Threading.SynchronizationContext]::SetSynchronizationContext((New-Object Windows.Threading.DispatcherSynchronizationContext([Windows.Threading.Dispatcher]::CurrentDispatcher)))
- $desktop=New-Object IpaDesktop.Desktop($engine,$false,$PSScriptRoot)
+ $hostFolder=Join-Path $temp 'host'
+ New-Item -ItemType Directory -Path $hostFolder|Out-Null
+ Copy-Item -LiteralPath (Join-Path $projectRoot 'MainWindow.xaml') -Destination $hostFolder
+ $desktop=New-Object IpaDesktop.Desktop($engine,$false,$hostFolder)
  $window=$desktop.Window;$window.Show()
  function Pump {
   $window.Dispatcher.Invoke([Action]{},[Windows.Threading.DispatcherPriority]::ApplicationIdle);$window.UpdateLayout()

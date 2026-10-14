@@ -1,6 +1,7 @@
 param([switch]$Check)
 $ErrorActionPreference='Stop'
-$source=Join-Path $PSScriptRoot 'Source'
+$projectRoot=Split-Path $PSScriptRoot -Parent
+$source=Join-Path $projectRoot 'Source'
 if(!(Test-Path -LiteralPath $source)){throw 'Source directory is required. Use a repository checkout for development.'}
 $groups=[ordered]@{
  'Core.cs'=@('Domain/*.cs','Infrastructure/*.cs','Services/*.cs')
@@ -24,7 +25,7 @@ foreach($target in $groups.Keys) {
   $bodies.Add('// '+$file.FullName.Substring($source.Length+1).Replace('\','/')+"`n"+$body)
  }
  $generated="// Generated from Source/. Edit the source classes, then run Sync-Sources.ps1.`n"+[string]::Join("`n",$imports)+"`n`n"+[string]::Join("`n`n",$bodies)+"`n"
- $destination=Join-Path $PSScriptRoot $target
+ $destination=Join-Path (Join-Path $projectRoot 'Generated') $target
  if($Check) {
   if([IO.File]::ReadAllText($destination).Replace("`r`n","`n") -cne $generated){throw "Outdated generated file: $target. Run Sync-Sources.ps1."}
  }else{[IO.File]::WriteAllText($destination,$generated,(New-Object Text.UTF8Encoding($false)))}

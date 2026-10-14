@@ -9,7 +9,10 @@ on:
       - 'Source/**'
       - '*.ps1'
       - Build.cmd
-      - App.ico
+      - Assets/**
+      - Tests/**
+      - Scripts/**
+      - Generated/**
       - .github/workflows/release.yml
   workflow_dispatch:
 
@@ -40,33 +43,37 @@ jobs:
           if (!(Test-Path "changelogs/v$($Matches[1]).md")) { throw 'Write the changelog before publishing a version.' }
       - name: Verify generated portable sources
         run: |
-          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File Sync-Sources.ps1 -Check
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File Scripts/Sync-Sources.ps1 -Check
           if ($LASTEXITCODE -ne 0) { throw 'Source snapshots do not match canonical classes' }
       - name: Build
         shell: cmd
         run: call Build.cmd < nul
       - name: Verify application and IPA metadata
         run: |
-          & powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File Verify.ps1
+          & powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File Tests/Verify.ps1
           if ($LASTEXITCODE -ne 0) { throw 'Application verification failed' }
-          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File Verify-IpaMetadata.ps1
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File Tests/Verify-IpaMetadata.ps1
           if ($LASTEXITCODE -ne 0) { throw 'Metadata verification failed' }
       - name: Verify updater
         run: |
-          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File Verify-Updater.ps1
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File Tests/Verify-Updater.ps1
           if ($LASTEXITCODE -ne 0) { throw 'Updater verification failed' }
       - name: Verify design
         run: |
-          & powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File Verify-Design.ps1
+          & powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File Tests/Verify-Design.ps1
           if ($LASTEXITCODE -ne 0) { throw 'Design verification failed' }
       - name: Verify services and controller integration
         run: |
-          & powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File Verify-Services.ps1
+          & powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File Tests/Verify-Services.ps1
           if ($LASTEXITCODE -ne 0) { throw 'Refactored services or controllers failed' }
       - name: Package
         run: |
-          $files = @('IPA-Desktop.exe', 'IPA-Desktop.exe.config', 'MainWindow.xaml', 'Core.cs', 'IpaMetadata.cs', 'App.cs', 'Build.cmd', 'Start.cmd', 'Verify.ps1', 'Verify-IpaMetadata.ps1', 'README.md', 'LICENSE.txt', 'App.ico', 'App.svg', 'WindowTheme.cs', 'GuiUpdater.cs', 'Update-App.ps1', 'Verify-Updater.ps1')
-          Compress-Archive -LiteralPath $files -DestinationPath "IPA-Desktop-$env:IPA_VERSION-Windows.zip"
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File Scripts/Package.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Packaging failed' }
+      - name: Verify legacy and organized package layouts
+        run: |
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File Tests/Verify-Layout.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Layout migration or organized update failed' }
       - name: Publish releases
         shell: pwsh
         run: |

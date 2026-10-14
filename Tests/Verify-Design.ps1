@@ -1,11 +1,12 @@
-﻿$ErrorActionPreference='Stop'
+﻿$projectRoot=Split-Path $PSScriptRoot -Parent
+$ErrorActionPreference='Stop'
 Add-Type -AssemblyName PresentationFramework,PresentationCore,WindowsBase,System.Xaml
-[Reflection.Assembly]::LoadFrom((Join-Path $PSScriptRoot 'IPA-Desktop.exe'))|Out-Null
-$reader=[IO.File]::OpenRead((Join-Path $PSScriptRoot 'MainWindow.xaml'))
+[Reflection.Assembly]::LoadFrom((Join-Path $projectRoot 'IPA-Desktop.exe'))|Out-Null
+$reader=[IO.File]::OpenRead((Join-Path $projectRoot 'MainWindow.xaml'))
 try {$window=[Windows.Markup.XamlReader]::Load($reader)}finally{$reader.Dispose()}
 try {
  $icon=New-Object Windows.Media.Imaging.BitmapImage
- $icon.BeginInit();$icon.UriSource=New-Object Uri((Join-Path $PSScriptRoot 'App.ico'));$icon.CacheOption='OnLoad';$icon.EndInit()
+ $icon.BeginInit();$icon.UriSource=New-Object Uri((Join-Path $projectRoot 'Assets/App.ico'));$icon.CacheOption='OnLoad';$icon.EndInit()
  $window.Icon=$icon;$window.FindName('BrandIcon').Source=$icon
  $window.FindName('VersionList').Items.Add('Latest version')|Out-Null
  $window.FindName('VersionList').SelectedIndex=0

@@ -1,7 +1,8 @@
+$projectRoot=Split-Path $PSScriptRoot -Parent
 # Run in Windows PowerShell 5.1, STA. No Apple login or network access.
 $ErrorActionPreference='Stop'
 Add-Type -AssemblyName PresentationFramework,PresentationCore,WindowsBase,System.Xaml
-[Reflection.Assembly]::LoadFrom((Join-Path $PSScriptRoot 'IPA-Desktop.exe')) | Out-Null
+[Reflection.Assembly]::LoadFrom((Join-Path $projectRoot 'IPA-Desktop.exe')) | Out-Null
 $temp=Join-Path ([IO.Path]::GetTempPath()) ('ipa-test-'+[Guid]::NewGuid().ToString('N'))
 try {
  $e=[IpaDesktop.Engine]::new($temp)
@@ -18,7 +19,7 @@ try {
  $e3=[IpaDesktop.Engine]::new($temp)
  if($e3.Settings.Version -ne '1' -or $e3.Settings.AutoUpdate){throw 'Rollback failed'}
  if(!(Test-Path (Join-Path $e.Downloads 'keep.ipa'))){throw 'Downloads lost'}
- $reader=[IO.File]::OpenRead((Join-Path $PSScriptRoot 'MainWindow.xaml'))
+ $reader=[IO.File]::OpenRead((Join-Path $projectRoot 'MainWindow.xaml'))
  try {$window=[Windows.Markup.XamlReader]::Load($reader);$window.Close()}finally{$reader.Dispose()}
  $selection=New-Object IpaDesktop.DownloadSelection
  $first=New-Object IpaDesktop.AppRow;$first.Name='MAX';$first.ID='6739530834'
