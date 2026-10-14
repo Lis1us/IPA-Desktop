@@ -161,6 +161,38 @@ try {
  if($window.FindName('DeviceList').Items.Count -ne 2 -or !$window.FindName('DeviceList').SelectedItem.Name.StartsWith('Test iPhone')){throw 'Named device discovery failed'}
  Click 'AccountInfo';WaitIdle
  if($window.FindName('Login').IsEnabled -or !$window.FindName('Logout').IsEnabled){throw 'Signed-in button state failed'}
+ # Retry uses failure snapshots, preserving a different version already selected for the same app.
+ $tabs.SelectedIndex=0;Pump
+ $window.FindName('Query').Text='333';Click 'Search';WaitIdle
+ $searchController=$desktop.GetType().GetField('search',[Reflection.BindingFlags]'Instance,NonPublic').GetValue($desktop)
+ $searchController.GetType().GetField('versionApp',[Reflection.BindingFlags]'Instance,NonPublic').SetValue($searchController,'333')
+ $window.FindName('VersionList').Items.Add('777')|Out-Null;$window.FindName('VersionList').SelectedIndex=1
+ Click 'AddChosen';Pump
+ $failures=$searchController.GetType().GetField('failedDownloads',[Reflection.BindingFlags]'Instance,NonPublic').GetValue($searchController)
+ $retryRow=New-Object IpaDesktop.AppRow;$retryRow.ID='333';$retryRow.Name='Retry fixture';$failures.Add($retryRow,'456')
+ $desktop.GetType().GetMethod('ApplyActions',[Reflection.BindingFlags]'Instance,NonPublic').Invoke($desktop,@())|Out-Null
+ if(!$window.FindName('RetryDownloads').IsEnabled){throw 'Retry button did not reflect stored errors'}
+ $callsBefore=$runner.Calls.Count;Click 'RetryDownloads';WaitIdle
+ $downloads=New-Object 'Collections.Generic.List[object]'
+ for($i=$callsBefore;$i -lt $runner.Calls.Count;$i++){if($runner.Calls[$i][0] -eq 'download'){$downloads.Add($runner.Calls[$i])}}
+ if($downloads.Count -ne 1 -or ($downloads[0] -join ' ') -notmatch '--external-version-id 456'){throw 'Retry did not use the failed version snapshot'}
+ if($window.FindName('ChosenApps').Items.Count -ne 1 -or $window.FindName('ChosenApps').Items[0].VersionID -ne '777'){throw 'Retry discarded a separately selected version'}
+ if($window.FindName('RetryDownloads').IsEnabled -or !$window.FindName('OperationDetail').Text.Contains('1')){throw 'Retry result/progress was not rendered'}
+ # Save and restore a named set through the actual UI controls.
+ $tabs.SelectedIndex=1;Pump
+ $window.FindName('Files').SelectedItems.Clear()
+ foreach($local in $window.FindName('Files').Items){$window.FindName('Files').SelectedItems.Add($local)}
+ Click 'AddInstall';Pump
+ $expected=$window.FindName('ChosenFiles').Items.Count
+ $tabs.SelectedIndex=4;Pump
+ $window.FindName('SetName').Text='Base fixture';Click 'SaveSet';Pump
+ if($window.FindName('AppSets').Items.Count -ne 1){throw 'Set save was not connected'}
+ Click 'ClearInstall';Pump
+ Click 'UseSet';WaitIdle
+ if($window.FindName('ChosenFiles').Items.Count -ne $expected -or $tabs.SelectedIndex -ne 1){throw 'Set did not add IPA files to installation queue'}
+ if(!$window.FindName('StorageSummary').Text.Contains('2') -or $window.FindName('StorageFiles').Items.Count -ne 2){throw 'Storage view was not populated'}
+ if(!$window.FindName('ExportDiagnostics')){throw 'Diagnostic export control is missing'}
+ Write-Host 'PASS: retry snapshot/version isolation, queue progress, saved set UI and storage UI'
  Write-Host 'PASS: real controller composition; search/clear/selection/removal; IPA selection/removal; device button/names; account state'
 }finally{
  if($window){$window.Close()}

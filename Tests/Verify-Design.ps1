@@ -38,7 +38,7 @@ try {
   }
  }
  $tabs=FindTabs $window
- foreach($index in 0..3){$tabs.SelectedIndex=$index;$window.Dispatcher.Invoke([Action]{},[Windows.Threading.DispatcherPriority]::ApplicationIdle);$window.UpdateLayout()}
+ foreach($index in 0..4){$tabs.SelectedIndex=$index;$window.Dispatcher.Invoke([Action]{},[Windows.Threading.DispatcherPriority]::ApplicationIdle);$window.UpdateLayout()}
  # Verify the same routed left-click binding used by both application grids.
  foreach($pair in @(@('Apps',0),@('Files',1))) {
   $tabs.SelectedIndex=$pair[1]
@@ -98,6 +98,8 @@ try {
  $minimumHeight=$window.FindName('Apps').ActualHeight
  $tabs.SelectedIndex=1;$window.Dispatcher.Invoke([Action]{},[Windows.Threading.DispatcherPriority]::ApplicationIdle);$window.UpdateLayout()
  if($window.FindName('Files').ActualHeight -lt 80){throw 'Files table collapsed at minimum size'}
+ $tabs.SelectedIndex=4;$window.Dispatcher.Invoke([Action]{},[Windows.Threading.DispatcherPriority]::ApplicationIdle);$window.UpdateLayout()
+ if($window.FindName('StorageFiles').ActualHeight -lt 80){throw 'Storage table collapsed at minimum size'}
  $tabs.SelectedIndex=0;$window.Dispatcher.Invoke([Action]{},[Windows.Threading.DispatcherPriority]::ApplicationIdle);$window.UpdateLayout()
  $window.FindName('VersionList').IsDropDownOpen=$true;$window.Dispatcher.Invoke([Action]{},[Windows.Threading.DispatcherPriority]::ApplicationIdle);$window.UpdateLayout()
  $window.FindName('VersionList').IsDropDownOpen=$false
@@ -111,6 +113,14 @@ try {
  $encoder.Save($stream)
  Write-Host ('IPA_PREVIEW:'+ [Convert]::ToBase64String($stream.ToArray()))
  $stream.Dispose()
+ $tabs.SelectedIndex=4;$window.Dispatcher.Invoke([Action]{},[Windows.Threading.DispatcherPriority]::ApplicationIdle);$window.UpdateLayout()
+ $window.FindName('StorageFiles').ItemsSource=$localRows
+ $window.FindName('SetName').Text='Base set'
+ $window.FindName('StorageSummary').Text='IPA: 2 | Storage: 200 MB | Older versions: 1'
+ $bitmap=New-Object Windows.Media.Imaging.RenderTargetBitmap([int]$visual.ActualWidth,[int]$visual.ActualHeight,96,96,[Windows.Media.PixelFormats]::Pbgra32)
+ $bitmap.Render($visual);$encoder=New-Object Windows.Media.Imaging.PngBitmapEncoder
+ $encoder.Frames.Add([Windows.Media.Imaging.BitmapFrame]::Create($bitmap));$stream=New-Object IO.MemoryStream
+ $encoder.Save($stream);Write-Host ('IPA_LIBRARY_PREVIEW:'+ [Convert]::ToBase64String($stream.ToArray()));$stream.Dispose()
  if($minimumHeight -lt 80){throw 'Application table collapsed at minimum size'}
  Write-Host 'PASS: all tab templates, dark combo popup, minimum window layout, icon and DWM initialization'
 }finally{$window.Close()}

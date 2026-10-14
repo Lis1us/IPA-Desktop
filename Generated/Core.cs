@@ -3,6 +3,7 @@ using Microsoft.Win32;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO.Compression;
 using System.IO;
 using System.Linq;
@@ -11,6 +12,7 @@ using System.Net;
 using System.Security.Cryptography;
 using System.Security;
 using System.ServiceProcess;
+using System.Text.RegularExpressions;
 using System.Text;
 using System.Threading.Tasks;
 using System.Threading;
@@ -72,6 +74,17 @@ namespace IpaDesktop
             get;
             set;
         }
+    }
+}
+
+// Domain/AppSet.cs
+namespace IpaDesktop
+{
+    public sealed class AppSet
+    {
+        public string Name { get; set; }
+        public string[] Files { get; set; }
+        public string Label { get { return Name + " · " + (Files == null ? 0 : Files.Length) + " IPA"; } }
     }
 }
 
@@ -211,7 +224,7 @@ namespace IpaDesktop
         {
             return new LocalRow
             {
-                Name = row.Name, Path = row.Path, Size = row.Size, AppleAccount = row.AppleAccount
+                Name = row.Name, Path = row.Path, Size = row.Size, AppleAccount = row.AppleAccount, Bytes = row.Bytes, BundleID = row.BundleID, AppName = row.AppName, Version = row.Version, Build = row.Build, IsOld = row.IsOld, StorageStatus = row.StorageStatus
             };
         }
         public int Count
@@ -251,11 +264,31 @@ namespace IpaDesktop
     }
 }
 
+// Domain/IpaDetails.cs
+namespace IpaDesktop
+{
+    public sealed class IpaDetails
+    {
+        public string Account { get; set; }
+        public string BundleID { get; set; }
+        public string AppName { get; set; }
+        public string Version { get; set; }
+        public string Build { get; set; }
+    }
+}
+
 // Domain/LocalRow.cs
 namespace IpaDesktop
 {
     public class LocalRow
     {
+        public long Bytes { get; set; }
+        public string BundleID { get; set; }
+        public string AppName { get; set; }
+        public string Version { get; set; }
+        public string Build { get; set; }
+        public bool IsOld { get; set; }
+        public string StorageStatus { get; set; }
         public string AppleAccount
         {
             get;
@@ -275,6 +308,75 @@ namespace IpaDesktop
         {
             get;
             set;
+        }
+    }
+}
+
+// Domain/QueueProgress.cs
+namespace IpaDesktop
+{
+    public sealed class TransferUpdate
+    {
+        public double Percent { get; set; }
+        public string Metrics { get; set; }
+        public static TransferUpdate Parse(string line, bool installing)
+        {
+            if (line == null) return null;
+            var match = Regex.Match(line, @"^PROGRESS:(\d{1,3})\s*$");
+            if (!match.Success && installing) match = Regex.Match(line, @"\((\d{1,3})%\)\s*$");
+            if (match.Success)
+            {
+                int percent;
+                if (!Int32.TryParse(match.Groups[1].Value, out percent) || percent > 100) return null;
+                return new TransferUpdate { Percent = percent };
+            }
+            match = Regex.Match(line, @"^Downloading:\s*(\d{1,3})%.*\((\d+(?:\.\d+)?\s*(?:MB|GB)/\d+(?:\.\d+)?\s*(?:MB|GB),\s*\d+(?:\.\d+)?\s*MB/s)\)");
+            if (!match.Success) return null;
+            var value = Double.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture);
+            return value <= 100 ? new TransferUpdate { Percent = value, Metrics = match.Groups[2].Value } : null;
+        }
+    }
+    public sealed class QueueProgress
+    {
+        readonly object gate = new object();
+        readonly Stopwatch elapsed = new Stopwatch();
+        string kind, name, metrics, summary;
+        int index, count;
+        double? percent;
+        public void Reset() { lock (gate) { kind = null; summary = null; elapsed.Reset(); } }
+        public void Begin(string operation, int position, int total, string app)
+        {
+            lock (gate) { kind = operation; index = position; count = total; name = app; metrics = null; summary = null; percent = null; elapsed.Restart(); }
+        }
+        public bool Feed(string line)
+        {
+            lock (gate)
+            {
+                if (kind == null || summary != null) return false;
+                var update = TransferUpdate.Parse(line, kind == "Установка");
+                if (update == null) return false;
+                percent = update.Percent; metrics = update.Metrics;
+                return true;
+            }
+        }
+        public void Complete(int success, int failures)
+        {
+            lock (gate) { summary = "Готово: " + success + " · ошибок: " + failures + " · всего: " + count; percent = 100; index = count; elapsed.Stop(); }
+        }
+        public bool Active { get { lock (gate) return kind != null; } }
+        public double Value { get { lock (gate) return count > 0 ? 100.0 * (index - 1 + (percent ?? 0) / 100.0) / count : 0; } }
+        public bool Indeterminate { get { lock (gate) return !percent.HasValue; } }
+        public string Text
+        {
+            get
+            {
+                lock (gate)
+                {
+                    if (kind == null) return "";
+                    if (summary != null) return summary;
+                    return kind + " " + index + "/" + count + ": " + name + " · осталось после текущего: " + Math.Max(0, count - index) + " · " + (percent.HasValue ? percent.Value.ToString("0") + "%" : "выполняется") + " · " + elapsed.Elapsed.ToString(@"hh\:mm\:ss") + (metrics == null ? (kind == "Скачивание" ? " · объём и скорость недоступны" : "") : " · " + metrics);
+                }
+            }
         }
     }
 }
@@ -573,7 +675,7 @@ namespace IpaDesktop
             ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
             var h = new HttpClient();
             h.Timeout = TimeSpan.FromMinutes(15);
-            h.DefaultRequestHeaders.UserAgent.ParseAdd("IPA-Desktop/0.1.16");
+            h.DefaultRequestHeaders.UserAgent.ParseAdd("IPA-Desktop/0.1.17");
             return h;
         }
     }
@@ -655,6 +757,7 @@ namespace IpaDesktop
                     object gate = new object();
                     bool stdoutDone = visible, stderrDone = visible;
                     long lastOutput = Stopwatch.GetTimestamp();
+                    string lastProgressMessage = null;
                     DataReceivedEventHandler stdout = delegate(object sender, DataReceivedEventArgs e)
                     {
                         lock (gate)
@@ -665,6 +768,11 @@ namespace IpaDesktop
                                 return;
                             }
                             lastOutput = Stopwatch.GetTimestamp();
+                            if (e.Data.StartsWith("PROGRESS:", StringComparison.Ordinal))
+                            {
+                                if (e.Data == lastProgressMessage) return;
+                                lastProgressMessage = e.Data;
+                            }
                             int count = Math.Min(e.Data.Length, 15000000 - output.Length);
                             if (count > 0)
                             {
@@ -1121,6 +1229,74 @@ namespace IpaDesktop
     }
 }
 
+// Services/AppSetStore.cs
+namespace IpaDesktop
+{
+    public sealed class AppSetStore
+    {
+        readonly string file, folder;
+        public AppSetStore(string root, string downloads)
+        {
+            file = Path.Combine(root, "AppSets.json");
+            folder = Path.GetFullPath(downloads);
+        }
+        static void Validate(AppSet set)
+        {
+            if (set == null || String.IsNullOrWhiteSpace(set.Name) || set.Name.Length > 64 || set.Name.Any(Char.IsControl)) throw new IOException("Название набора: от 1 до 64 символов.");
+            if (set.Files == null || set.Files.Length == 0 || set.Files.Length > 500) throw new IOException("В наборе должно быть от 1 до 500 IPA.");
+            foreach (var name in set.Files)
+                if (String.IsNullOrWhiteSpace(name) || name.Length > 255 || name.Any(Char.IsControl) || name.IndexOfAny(new[] { '/', '\\', ':' }) >= 0 || name.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 || !String.Equals(Path.GetExtension(name), ".ipa", StringComparison.OrdinalIgnoreCase)) throw new IOException("Набор содержит некорректное имя IPA.");
+        }
+        public List<AppSet> Load()
+        {
+            if (!File.Exists(file)) return new List<AppSet>();
+            if (new FileInfo(file).Length > 1000000) throw new IOException("Файл наборов слишком велик.");
+            var sets = JsonCodec.Deserialize<List<AppSet>>(File.ReadAllText(file, Encoding.UTF8));
+            if (sets == null || sets.Count > 100) throw new IOException("Некорректный файл наборов.");
+            foreach (var set in sets) Validate(set);
+            if (sets.GroupBy(x => x.Name, StringComparer.OrdinalIgnoreCase).Any(g => g.Count() > 1)) throw new IOException("Имена наборов повторяются.");
+            return sets.OrderBy(x => x.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
+        }
+        void Write(List<AppSet> sets)
+        {
+            if (sets.Count > 100) throw new IOException("Можно сохранить не более 100 наборов.");
+            var text = JsonCodec.Serialize(sets);
+            if (Encoding.UTF8.GetByteCount(text) > 1000000) throw new IOException("Файл наборов слишком велик.");
+            File.WriteAllText(file + ".tmp", text, Encoding.UTF8);
+            if (File.Exists(file)) File.Replace(file + ".tmp", file, null);
+            else File.Move(file + ".tmp", file);
+        }
+        public void Save(string name, IEnumerable<LocalRow> rows)
+        {
+            var names = rows.Select(row =>
+            {
+                var path = Path.GetFullPath(row.Path);
+                if (!String.Equals(Path.GetDirectoryName(path), folder, StringComparison.OrdinalIgnoreCase) || !File.Exists(path) || (File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0) throw new IOException("Наборы сохраняют только существующие IPA из папки приложения.");
+                return Path.GetFileName(path);
+            }).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+            var set = new AppSet { Name = (name ?? "").Trim(), Files = names };
+            Validate(set);
+            var sets = Load();
+            sets.RemoveAll(x => String.Equals(x.Name, set.Name, StringComparison.OrdinalIgnoreCase));
+            sets.Add(set);
+            Write(sets);
+        }
+        public void Delete(string name)
+        {
+            var sets = Load();
+            sets.RemoveAll(x => String.Equals(x.Name, name, StringComparison.OrdinalIgnoreCase));
+            Write(sets);
+        }
+        public List<LocalRow> Resolve(AppSet set, IEnumerable<LocalRow> available, out string[] missing)
+        {
+            Validate(set);
+            var lookup = available.Where(x => String.Equals(Path.GetDirectoryName(Path.GetFullPath(x.Path)), folder, StringComparison.OrdinalIgnoreCase)).ToDictionary(x => Path.GetFileName(x.Path), StringComparer.OrdinalIgnoreCase);
+            missing = set.Files.Where(x => !lookup.ContainsKey(x)).ToArray();
+            return set.Files.Where(lookup.ContainsKey).Distinct(StringComparer.OrdinalIgnoreCase).Select(x => lookup[x]).ToList();
+        }
+    }
+}
+
 // Services/AppToolClient.cs
 namespace IpaDesktop
 {
@@ -1235,6 +1411,40 @@ namespace IpaDesktop
     }
 }
 
+// Services/DiagnosticReport.cs
+namespace IpaDesktop
+{
+    public static class DiagnosticReport
+    {
+        static string Replace(string text, string pattern, string replacement)
+        {
+            return Regex.Replace(text, pattern, replacement, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, TimeSpan.FromSeconds(2));
+        }
+        public static string Redact(string text, IEnumerable<string> privateValues)
+        {
+            text = text ?? "";
+            if (text.Length > 1000000) text = text.Substring(text.Length - 1000000);
+            foreach (var value in (privateValues ?? new string[0]).Where(x => !String.IsNullOrWhiteSpace(x) && x.Length >= 3).Distinct().OrderByDescending(x => x.Length)) text = Replace(text, Regex.Escape(value), "[СКРЫТО]");
+            text = Replace(text, @"(?m)^.*(?:Authorization|Cookie|Set-Cookie|X-Apple-[A-Za-z-]+)\s*[:=].*$", "[СКРЫТ ЗАГОЛОВОК]");
+            text = Replace(text, @"(""(?:password[^""\r\n]*|token|access[_-]?token|refresh[_-]?token|auth[_-]?code|verification[_-]?code|passphrase|keychain-passphrase|secret|kbsync|dsid|directoryServicesID|hardwareID|udid|guid|cookie|authorization)""\s*:\s*)(?:""(?:\\.|[^""\\])*""|[^,}\r\n]+)", "$1\"[СКРЫТО]\"");
+            text = Replace(text, @"(<key>\s*(?:password[^<]*|token|access[_-]?token|refresh[_-]?token|auth[_-]?code|passphrase|secret|kbsync|dsid|directoryServicesID|hardwareID|udid|guid|cookie)\s*</key>\s*<(?:string|data|integer)>)[\s\S]*?(</(?:string|data|integer)>)", "$1[СКРЫТО]$2");
+            text = Replace(text, @"(?<!\w)(--(?:password|auth-code|keychain-passphrase|email|token|udid)|-p|-e|-u)(?:=|\s+)(?:""(?:\\.|[^""\\])*""|'[^']*'|\S+)", "$1 [СКРЫТО]");
+            text = Replace(text, @"\b(password(?:Token)?|access[_-]?token|refresh[_-]?token|token|auth[_ -]?code|verification[_ -]?code|passphrase|keychain-passphrase|secret|kbsync|dsid|directoryServicesID|hardwareID|udid|guid)\s*[:=]\s*[^\r\n]+", "$1=[СКРЫТО]");
+            text = Replace(text, @"[\p{L}\p{N}._%+\-]+@[\p{L}\p{N}.\-]+\.[\p{L}]{2,}", "[ПОЧТА]");
+            text = Replace(text, @"\b[A-Z]:\\Users\\[^\\\r\n""<>]+", @"C:\Users\[ПОЛЬЗОВАТЕЛЬ]");
+            text = Replace(text, @"/(?:Users|home)/[^/\s""']+", "/home/[ПОЛЬЗОВАТЕЛЬ]");
+            text = Replace(text, @"\b[0-9a-f]{8}-[0-9a-f]{16}\b|\b[0-9a-f]{40}\b|\b(?:[0-9a-f]{2}:){5}[0-9a-f]{2}\b", "[ИДЕНТИФИКАТОР]");
+            text = Replace(text, @"\beyJ[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+", "[ТОКЕН]");
+            return text;
+        }
+        public static string Create(string journal, string engineVersion, string toolsVersion, IEnumerable<string> privateValues)
+        {
+            var header = "IPA Desktop " + GuiUpdater.CurrentVersion + Environment.NewLine + "Windows: " + Environment.OSVersion.Version + Environment.NewLine + "ipatool: " + engineVersion + Environment.NewLine + "Device tools: " + toolsVersion + Environment.NewLine + "Created: " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + Environment.NewLine + Environment.NewLine;
+            return Redact(header + journal, privateValues);
+        }
+    }
+}
+
 // Services/Engine.cs
 namespace IpaDesktop
 {
@@ -1276,6 +1486,7 @@ namespace IpaDesktop
                 return runner.Active;
             }
         }
+        public AppSetStore AppSets { get; private set; }
         public AppleSupportService AppleSupport { get; private set; }
         public DeviceService Devices
         {
@@ -1336,6 +1547,7 @@ namespace IpaDesktop
             AppleSupport = new AppleSupportService(appleSupportProbe);
             Devices = new DeviceService(runner, locator);
             LocalFiles = new LocalAppRepository(Downloads);
+            AppSets = new AppSetStore(root, Downloads);
             ApplicationDownloads = new ApplicationDownloads(tools, Downloads);
         }
         public void Save()
@@ -1798,6 +2010,8 @@ namespace IpaDesktop
     public sealed class LocalAppRepository
     {
         readonly string folder;
+        readonly object gate = new object();
+        readonly Dictionary<string, Tuple<long, long, IpaDetails>> metadataCache = new Dictionary<string, Tuple<long, long, IpaDetails>>(StringComparer.OrdinalIgnoreCase);
         public LocalAppRepository(string folder)
         {
             this.folder = Path.GetFullPath(folder);
@@ -1806,10 +2020,32 @@ namespace IpaDesktop
         {
             return Task.Run(delegate
             {
-                return Directory.GetFiles(folder, "*.ipa").Select(x => new FileInfo(x)).OrderByDescending(x => x.LastWriteTime).Select(x => new LocalRow
+                lock (gate)
                 {
-                    Name = x.Name, Size = (x.Length / 1048576.0).ToString("N1") + " МБ", Path = x.FullName, AppleAccount = IpaMetadata.ReadAccount(x.FullName)
-                }).ToList();
+                var rows = new List<LocalRow>();
+                foreach (var path in Directory.GetFiles(folder, "*.ipa"))
+                {
+                    try
+                    {
+                        var file = new FileInfo(path);
+                        if ((file.Attributes & FileAttributes.ReparsePoint) != 0) continue;
+                        Tuple<long, long, IpaDetails> cached;
+                        if (!metadataCache.TryGetValue(path, out cached) || cached.Item1 != file.Length || cached.Item2 != file.LastWriteTimeUtc.Ticks)
+                        {
+                            cached = Tuple.Create(file.Length, file.LastWriteTimeUtc.Ticks, IpaMetadata.ReadDetails(path));
+                            metadataCache[path] = cached;
+                        }
+                        var metadata = cached.Item3;
+                        rows.Add(new LocalRow { Name = file.Name, Size = StorageAnalysis.Bytes(file.Length), Bytes = file.Length, Path = file.FullName, AppleAccount = metadata.Account, BundleID = metadata.BundleID, AppName = metadata.AppName ?? file.Name, Version = metadata.Version, Build = metadata.Build });
+                    }
+                    catch (FileNotFoundException) { }
+                    catch (DirectoryNotFoundException) { }
+                }
+                StorageAnalysis.Mark(rows);
+                var present = new HashSet<string>(rows.Select(x => x.Path), StringComparer.OrdinalIgnoreCase);
+                foreach (var missing in metadataCache.Keys.Where(x => !present.Contains(x)).ToArray()) metadataCache.Remove(missing);
+                return rows.OrderBy(x => x.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
+                }
             });
         }
         public Task ImportAsync(IEnumerable<string> paths, CancellationToken ct)
@@ -1833,6 +2069,40 @@ namespace IpaDesktop
             if (!File.Exists(path)) return;
             if ((File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0) throw new IOException("Удаление ссылок не поддерживается.");
             Microsoft.VisualBasic.FileIO.FileSystem.DeleteFile(path, Microsoft.VisualBasic.FileIO.UIOption.OnlyErrorDialogs, Microsoft.VisualBasic.FileIO.RecycleOption.SendToRecycleBin, Microsoft.VisualBasic.FileIO.UICancelOption.ThrowException);
+        }
+    }
+}
+
+// Services/StorageAnalysis.cs
+namespace IpaDesktop
+{
+    public static class StorageAnalysis
+    {
+        public static string Bytes(long bytes)
+        {
+            if (bytes >= 1073741824) return (bytes / 1073741824.0).ToString("N2") + " ГБ";
+            return (bytes / 1048576.0).ToString("N1") + " МБ";
+        }
+        static Version Parse(string text)
+        {
+            Version value;
+            if (!Version.TryParse(text, out value)) return null;
+            return new Version(value.Major, value.Minor, Math.Max(0, value.Build), Math.Max(0, value.Revision));
+        }
+        public static void Mark(IEnumerable<LocalRow> rows)
+        {
+            var list = rows.ToList();
+            foreach (var row in list) { row.IsOld = false; row.StorageStatus = "Версия не определена"; }
+            var known = list.Where(x => !String.IsNullOrWhiteSpace(x.BundleID) && x.AppleAccount != null && x.AppleAccount.Contains("@") && Parse(x.Version) != null);
+            foreach (var group in known.GroupBy(x => x.BundleID.ToLowerInvariant() + "\n" + x.AppleAccount.ToLowerInvariant()))
+            {
+                var newest = group.Select(x => Parse(x.Version)).Max();
+                foreach (var row in group)
+                {
+                    row.IsOld = Parse(row.Version).CompareTo(newest) < 0;
+                    row.StorageStatus = row.IsOld ? "Старая версия" : "Самая новая в папке";
+                }
+            }
         }
     }
 }

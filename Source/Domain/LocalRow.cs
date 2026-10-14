@@ -2,6 +2,13 @@ namespace IpaDesktop
 {
     public class LocalRow
     {
+        public long Bytes { get; set; }
+        public string BundleID { get; set; }
+        public string AppName { get; set; }
+        public string Version { get; set; }
+        public string Build { get; set; }
+        public bool IsOld { get; set; }
+        public string StorageStatus { get; set; }
         public string AppleAccount
         {
             get;

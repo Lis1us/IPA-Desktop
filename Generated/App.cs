@@ -145,8 +145,25 @@ namespace IpaDesktop
         }
         readonly BufferedJournal journalBuffer = new BufferedJournal();
         System.Windows.Threading.DispatcherTimer journalTimer;
+        readonly QueueProgress queueProgress = new QueueProgress();
+        internal void BeginQueue(string kind, int index, int total, string app)
+        {
+            queueProgress.Begin(kind, index, total, app);
+            C<TextBlock>("Status").Text = kind + " " + index + "/" + total + ": " + app;
+            RenderQueue();
+        }
+        internal void CompleteQueue(int success, int failed) { queueProgress.Complete(success, failed); RenderQueue(); }
+        void RenderQueue()
+        {
+            C<TextBlock>("OperationDetail").Text = queueProgress.Text;
+            C<TextBlock>("OperationDetail").ToolTip = queueProgress.Text;
+            if (!queueProgress.Active) return;
+            C<ProgressBar>("Progress").IsIndeterminate = busy && queueProgress.Indeterminate;
+            C<ProgressBar>("Progress").Value = queueProgress.Value;
+        }
         internal void Log(string text)
         {
+            if (queueProgress.Feed(text)) return;
             journalBuffer.Add(text);
         }
         void FlushJournal()
@@ -172,10 +189,12 @@ namespace IpaDesktop
         {
             if (busy) return;
             busy = true;
+            queueProgress.Reset();
+            C<TextBlock>("OperationDetail").Text = "";
             cancellation = new CancellationTokenSource();
             string[] buttons =
             {
-                "Login", "AccountInfo", "Logout", "Search", "Versions", "VersionInfo", "Download", "RefreshFiles", "ImportFile", "DeleteFiles", "Devices", "InstallFiles", "CheckUpdate", "Rollback", "CheckGuiUpdate", "InstallGuiUpdate", "AddChosen", "ClearChosen", "AddInstall", "ClearInstall", "CheckAppleSupport", "CheckDeviceUpdate", "RollbackDevices"
+                "Login", "AccountInfo", "Logout", "Search", "Versions", "VersionInfo", "Download", "RefreshFiles", "ImportFile", "DeleteFiles", "Devices", "InstallFiles", "CheckUpdate", "Rollback", "CheckGuiUpdate", "InstallGuiUpdate", "AddChosen", "ClearChosen", "AddInstall", "ClearInstall", "CheckAppleSupport", "CheckDeviceUpdate", "RollbackDevices", "RetryDownloads", "ForgetDownloadErrors", "RetryInstalls", "ForgetInstallErrors", "SaveSet", "UseSet", "DeleteSet", "SelectOld", "DeleteStorage", "RefreshStorage"
             };
             foreach (var name in buttons) C<Button>(name).IsEnabled = false;
             C<ItemsControl>("ChosenFiles").IsEnabled = false;
@@ -210,6 +229,7 @@ namespace IpaDesktop
                 C<Button>("Cancel").IsEnabled = false;
                 C<ProgressBar>("Progress").IsIndeterminate = false;
                 C<ProgressBar>("Progress").Value = 0;
+                RenderQueue();
                 StateView();
                 RefreshFiles();
                 ApplyActions();
@@ -234,6 +254,7 @@ namespace IpaDesktop
             journalTimer.Tick += delegate
             {
                 FlushJournal();
+                if (busy) RenderQueue();
             };
             journalTimer.Start();
             w.Closed += delegate
@@ -277,6 +298,19 @@ namespace IpaDesktop
             {
                 if (cancellation != null) cancellation.Cancel();
             });
+            On("ExportDiagnostics", delegate
+            {
+                JournalView.Flush(C<TextBox>("Journal"), journalBuffer, true);
+                var privateValues = new List<string> { Environment.UserName };
+                var email = C<TextBlock>("AccountLabel").Text;
+                if (email.Contains("@")) privateValues.Add(email);
+                foreach (var device in C<ComboBox>("DeviceList").Items.Cast<DeviceRow>()) { privateValues.Add(device.ID); privateValues.Add(device.Name); }
+                var report = DiagnosticReport.Create(C<TextBox>("Journal").Text, engine.Settings.Version ?? "not installed", engine.Settings.DeviceVersion ?? "not installed", privateValues);
+                var dialog = new SaveFileDialog { Filter = "Текстовый отчёт (*.txt)|*.txt", FileName = "IPA-Desktop-diagnostic-" + DateTime.Now.ToString("yyyyMMdd-HHmmss") + ".txt" };
+                if (dialog.ShowDialog(w) != true) return;
+                File.WriteAllText(dialog.FileName, report, Encoding.UTF8);
+                Log("Отчёт диагностики сохранён.");
+            });
             On("OpenFolder", delegate
             {
                 Process.Start(new ProcessStartInfo(engine.Downloads)
@@ -295,7 +329,7 @@ namespace IpaDesktop
             ApplyActions();
             w.Loaded += delegate
             {
-                Log("IPA Desktop 0.1.16. Файлы: " + engine.Downloads);
+                Log("IPA Desktop 0.1.17. Файлы: " + engine.Downloads);
                 if (!checkAtStartup) return;
                 Work("Проверка движка и сохранённого входа…", async delegate(CancellationToken ct)
                 {
@@ -384,6 +418,8 @@ namespace IpaDesktop
     {
         AppleSupportReport appleSupport;
         readonly InstallationSelection installChosen = new InstallationSelection();
+        readonly InstallationSelection failedInstalls = new InstallationSelection();
+        List<LocalRow> localRows = new List<LocalRow>();
         public FilesController(Desktop view, Engine engine) : base(view, engine)
         {
             RowClickSelection.Attach(C<DataGrid>("Files"), delegate(object item)
@@ -419,41 +455,49 @@ namespace IpaDesktop
                 RefreshInstallChosen();
             });
             On("RefreshFiles", RefreshFiles);
-            On("DeleteFiles", delegate
+            On("DeleteFiles", delegate { DeleteRows(C<DataGrid>("Files").SelectedItems.Cast<LocalRow>().ToList()); });
+            On("DeleteStorage", delegate { DeleteRows(C<DataGrid>("StorageFiles").SelectedItems.Cast<LocalRow>().ToList()); });
+            On("RefreshStorage", RefreshFiles);
+            On("SelectOld", delegate
             {
-                if (busy) return;
-                var rows = C<DataGrid>("Files").SelectedItems.Cast<LocalRow>().ToList();
-                if (rows.Count == 0) throw new Exception("Выберите IPA-файлы для удаления. Несколько файлов: Ctrl / Shift.");
-                var summary = String.Join(Environment.NewLine, rows.Take(8).Select(x => x.Name));
-                if (rows.Count > 8) summary += Environment.NewLine + "… и ещё " + (rows.Count - 8);
-                if (MessageBox.Show(w, "Переместить в корзину выбранные IPA (" + rows.Count + ")?" + Environment.NewLine + Environment.NewLine + summary + Environment.NewLine + Environment.NewLine + "Приложения на iPhone останутся установленными.", "Удаление IPA", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) != MessageBoxResult.Yes) return;
-                Work("Перемещение IPA в корзину…", async delegate(CancellationToken ct)
+                var grid = C<DataGrid>("StorageFiles"); grid.SelectedItems.Clear();
+                foreach (var row in localRows.Where(x => x.IsOld)) grid.SelectedItems.Add(row);
+                ApplyActions();
+            });
+            C<DataGrid>("StorageFiles").SelectionChanged += delegate { ApplyActions(); };
+            C<ComboBox>("AppSets").SelectionChanged += delegate { ApplyActions(); };
+            On("SaveSet", delegate
+            {
+                engine.AppSets.Save(C<TextBox>("SetName").Text, installChosen.Snapshot());
+                LoadSets();
+                C<TextBlock>("SetStatus").Text = "Набор сохранён. IPA-файлы не копируются.";
+            });
+            On("DeleteSet", delegate
+            {
+                var set = C<ComboBox>("AppSets").SelectedItem as AppSet;
+                if (set == null) return;
+                engine.AppSets.Delete(set.Name); LoadSets();
+                C<TextBlock>("SetStatus").Text = "Набор удалён. IPA-файлы сохранены.";
+            });
+            On("UseSet", delegate
+            {
+                var set = C<ComboBox>("AppSets").SelectedItem as AppSet;
+                if (set == null) return;
+                Work("Добавление набора…", async delegate(CancellationToken ct)
                 {
-                    var failures = new List<string>();
-                    int removed = 0;
-                    await Task.Run(delegate
-                    {
-                        foreach (var row in rows)
-                        {
-                            ct.ThrowIfCancellationRequested();
-                            try
-                            {
-                                engine.LocalFiles.Delete(row.Path);
-                                removed++;
-                                Log("Перемещено в корзину: " + row.Name);
-                            } catch (OperationCanceledException)
-                            {
-                                throw;
-                            } catch (Exception e)
-                            {
-                                failures.Add(row.Name + ": " + e.Message);
-                            }
-                        }
-                    }, ct);
-                    Log("Удалено из папки IPA: " + removed);
-                    if (failures.Count > 0) throw new IOException("Не удалось удалить:" + Environment.NewLine + String.Join(Environment.NewLine, failures));
+                    var available = await engine.LocalFiles.ListAsync();
+                    ct.ThrowIfCancellationRequested();
+                    string[] missing;
+                    var rows = engine.AppSets.Resolve(set, available, out missing);
+                    foreach (var row in rows) installChosen.Add(row);
+                    RefreshInstallChosen();
+                    C<TextBlock>("SetStatus").Text = "Добавлено IPA: " + rows.Count + (missing.Length > 0 ? " · отсутствуют: " + String.Join(", ", missing) : "");
+                    Log("Набор «" + set.Name + "»: добавлено " + rows.Count + ", отсутствует " + missing.Length);
+                    if (missing.Length > 0) Log("Отсутствующие IPA: " + String.Join(", ", missing));
+                    if (rows.Count > 0) C<TabItem>("FilesTab").IsSelected = true;
                 });
             });
+            LoadSets();
             On("ImportFile", delegate
             {
                 var dialog = new OpenFileDialog
@@ -491,42 +535,76 @@ namespace IpaDesktop
                     ApplyActions();
                 });
             });
-            On("InstallFiles", delegate
+            On("InstallFiles", delegate { StartInstall(installChosen.Snapshot()); });
+            On("RetryInstalls", delegate { StartInstall(failedInstalls.Snapshot()); });
+            On("ForgetInstallErrors", delegate { failedInstalls.Clear(); ApplyActions(); });
+        }
+        void LoadSets()
+        {
+            var combo = C<ComboBox>("AppSets");
+            var previous = combo.SelectedItem as AppSet;
+            try
             {
-                var device = C<ComboBox>("DeviceList").SelectedItem as DeviceRow;
-                string udid = device == null ? null : device.ID;
-                var rows = installChosen.Snapshot();
-                if (String.IsNullOrEmpty(udid) || rows.Count == 0) throw new Exception("Выберите устройство и добавьте IPA к установке.");
-                string summary = String.Join(Environment.NewLine, rows.Take(8).Select(x => x.Name));
-                if (rows.Count > 8) summary += Environment.NewLine + "… и ещё " + (rows.Count - 8);
-                if (MessageBox.Show(w, "Установить IPA (" + rows.Count + ") на устройство " + device.Name + "?" + Environment.NewLine + Environment.NewLine + summary, "Установка", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) != MessageBoxResult.Yes) return;
-                Work("Установка IPA…", async delegate(CancellationToken ct)
+                var sets = engine.AppSets.Load(); combo.ItemsSource = sets;
+                combo.SelectedItem = sets.FirstOrDefault(x => previous != null && x.Name == previous.Name) ?? sets.FirstOrDefault();
+            }
+            catch (Exception e) { C<TextBlock>("SetStatus").Text = e.Message; Log("Наборы: " + e.Message); }
+        }
+        void DeleteRows(List<LocalRow> rows)
+        {
+            if (busy || rows.Count == 0) return;
+            var summary = String.Join(Environment.NewLine, rows.Take(8).Select(x => x.Name));
+            if (rows.Count > 8) summary += Environment.NewLine + "… и ещё " + (rows.Count - 8);
+            if (MessageBox.Show(w, "Переместить в корзину выбранные IPA (" + rows.Count + ")?" + Environment.NewLine + Environment.NewLine + summary + Environment.NewLine + Environment.NewLine + "Приложения на iPhone останутся установленными.", "Удаление IPA", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) != MessageBoxResult.Yes) return;
+            Work("Перемещение IPA в корзину…", async delegate(CancellationToken ct)
+            {
+                var failures = new List<string>(); int removed = 0;
+                await Task.Run(delegate
                 {
-                    await CheckSupport(ct);
-                    var failed = new List<string>();
-                    int index = 0;
                     foreach (var row in rows)
                     {
                         ct.ThrowIfCancellationRequested();
-                        index++;
-                        C<TextBlock>("Status").Text = "Установка " + index + " из " + rows.Count + ": " + row.Name;
-                        Log("Установка " + row.Name);
-                        try
-                        {
-                            await engine.Devices.InstallAsync(device, row, ct);
-                            installChosen.Remove(row.Path);
-                            RefreshInstallChosen();
-                        } catch (OperationCanceledException)
-                        {
-                            throw;
-                        } catch (Exception e)
-                        {
-                            failed.Add(row.Name);
-                            Log("Ошибка установки " + row.Name + ": " + e.Message);
-                        }
+                        try { engine.LocalFiles.Delete(row.Path); removed++; Log("Перемещено в корзину: " + row.Name); }
+                        catch (OperationCanceledException) { throw; }
+                        catch (Exception e) { failures.Add(row.Name + ": " + e.Message); }
                     }
-                    if (failed.Count > 0) throw new Exception("Не удалось установить: " + String.Join(", ", failed) + ". Доступные IPA остались в выбранном для повтора.");
-                });
+                }, ct);
+                Log("Удалено из папки IPA: " + removed);
+                if (failures.Count > 0) throw new IOException("Не удалось удалить:" + Environment.NewLine + String.Join(Environment.NewLine, failures));
+            });
+        }
+        void StartInstall(List<LocalRow> rows)
+        {
+            var device = C<ComboBox>("DeviceList").SelectedItem as DeviceRow;
+            if (device == null || rows.Count == 0) throw new Exception("Выберите устройство и IPA для установки.");
+            var summary = String.Join(Environment.NewLine, rows.Take(8).Select(x => x.Name));
+            if (rows.Count > 8) summary += Environment.NewLine + "… и ещё " + (rows.Count - 8);
+            if (MessageBox.Show(w, "Установить IPA (" + rows.Count + ") на " + device.Name + "?" + Environment.NewLine + Environment.NewLine + summary, "Установка", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) != MessageBoxResult.Yes) return;
+            Work("Установка IPA…", async delegate(CancellationToken ct)
+            {
+                await CheckSupport(ct);
+                int index = 0, success = 0;
+                var failures = new List<string>();
+                foreach (var row in rows)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    view.BeginQueue("Установка", ++index, rows.Count, row.Name);
+                    Log("Установка " + row.Name);
+                    try
+                    {
+                        await engine.Devices.InstallAsync(device, row, ct);
+                        installChosen.Remove(row.Path); failedInstalls.Remove(row.Path); success++;
+                        RefreshInstallChosen();
+                    }
+                    catch (OperationCanceledException) { throw; }
+                    catch (Exception e)
+                    {
+                        failedInstalls.Add(row); failures.Add(row.Name);
+                        Log("Ошибка установки " + row.Name + ": " + e.Message);
+                    }
+                }
+                view.CompleteQueue(success, failures.Count);
+                if (failures.Count > 0) throw new Exception("Не удалось установить: " + String.Join(", ", failures) + ". Кнопка «Повторить ошибки» повторит только эти IPA.");
             });
         }
         public async Task CheckSupport(CancellationToken cancellation)
@@ -544,6 +622,15 @@ namespace IpaDesktop
 
         public override void RefreshActions()
         {
+            C<Button>("RetryInstalls").IsEnabled = !busy && failedInstalls.Count > 0 && C<ComboBox>("DeviceList").SelectedItem != null;
+            C<Button>("RetryInstalls").Content = "Повторить ошибки (" + failedInstalls.Count + ")";
+            C<Button>("RetryInstalls").ToolTip = String.Join(Environment.NewLine, failedInstalls.Snapshot().Select(x => x.Name));
+            C<Button>("ForgetInstallErrors").IsEnabled = !busy && failedInstalls.Count > 0;
+            C<Button>("SaveSet").IsEnabled = !busy && installChosen.Count > 0;
+            C<Button>("UseSet").IsEnabled = !busy && C<ComboBox>("AppSets").SelectedItem != null;
+            C<Button>("DeleteSet").IsEnabled = !busy && C<ComboBox>("AppSets").SelectedItem != null;
+            C<Button>("SelectOld").IsEnabled = !busy && localRows.Any(x => x.IsOld);
+            C<Button>("DeleteStorage").IsEnabled = !busy && C<DataGrid>("StorageFiles").SelectedItems.Count > 0;
             C<ItemsControl>("ChosenFiles").IsEnabled = !busy;
             C<Button>("AddInstall").IsEnabled = !busy && C<DataGrid>("Files").SelectedItems.Count > 0;
             C<Button>("ClearInstall").IsEnabled = !busy && installChosen.Count > 0;
@@ -561,12 +648,18 @@ namespace IpaDesktop
         public async void RefreshFiles()
         {
             int generation = ++filesGeneration;
+            var storageSelected = new HashSet<string>(C<DataGrid>("StorageFiles").SelectedItems.Cast<LocalRow>().Select(x => x.Path), StringComparer.OrdinalIgnoreCase);
             var selected = new HashSet<string>(C<DataGrid>("Files").SelectedItems.Cast<LocalRow>().Select(x => x.Path), StringComparer.OrdinalIgnoreCase);
             try
             {
                 var rows = await engine.LocalFiles.ListAsync();
                 if (generation != filesGeneration) return;
+                localRows = rows;
                 C<DataGrid>("Files").ItemsSource = rows;
+                C<DataGrid>("StorageFiles").ItemsSource = rows;
+                foreach (var row in rows) if (storageSelected.Contains(row.Path)) C<DataGrid>("StorageFiles").SelectedItems.Add(row);
+                C<TextBlock>("StorageSummary").Text = "IPA: " + rows.Count + " · занято: " + StorageAnalysis.Bytes(rows.Sum(x => x.Bytes)) + " · старых версий: " + rows.Count(x => x.IsOld) + " (" + StorageAnalysis.Bytes(rows.Where(x => x.IsOld).Sum(x => x.Bytes)) + ")";
+
                 foreach (var row in rows) if (selected.Contains(row.Path)) C<DataGrid>("Files").SelectedItems.Add(row);
                 installChosen.Reconcile(rows);
                 RefreshInstallChosen();
@@ -647,6 +740,7 @@ namespace IpaDesktop
     {
         readonly DownloadSelection chosen = new DownloadSelection();
         readonly SearchSession searchSession = new SearchSession();
+        readonly DownloadSelection failedDownloads = new DownloadSelection();
         string versionApp;
         public SearchController(Desktop view, Engine engine) : base(view, engine)
         {
@@ -807,41 +901,49 @@ namespace IpaDesktop
                 chosen.Remove(id);
                 RefreshChosen();
             });
-            On("Download", delegate
+            On("Download", delegate { StartDownloads(chosen.Snapshot()); });
+            On("RetryDownloads", delegate { StartDownloads(failedDownloads.Snapshot()); });
+            On("ForgetDownloadErrors", delegate { failedDownloads.Clear(); ApplyActions(); });
+        }
+        void StartDownloads(List<DownloadItem> rows)
+        {
+            if (rows.Count == 0) throw new Exception("Добавьте приложения в выбранное.");
+            Work("Скачивание IPA…", async delegate(CancellationToken ct)
             {
-                var rows = chosen.Snapshot();
-                if (rows.Count == 0) throw new Exception("Добавьте приложения в выбранное.");
-                Work("Скачивание выбранных IPA…", async delegate(CancellationToken ct)
+                int index = 0, success = 0;
+                var failures = new List<string>();
+                foreach (var row in rows)
                 {
-                    var failed = new List<string>();
-                    int index = 0;
-                    foreach (var row in rows)
+                    ct.ThrowIfCancellationRequested();
+                    view.BeginQueue("Скачивание", ++index, rows.Count, row.Name);
+                    Log("В очереди: " + row.Label);
+                    try
                     {
-                        ct.ThrowIfCancellationRequested();
-                        index++;
-                        C<TextBlock>("Status").Text = "Скачивание " + index + " из " + rows.Count + ": " + row.Name;
-                        Log("В очереди: " + row.Label);
-                        try
-                        {
-                            await engine.ApplicationDownloads.DownloadAsync(row, ct);
-                            chosen.Remove(row.ID);
-                            RefreshChosen();
-                        } catch (OperationCanceledException)
-                        {
-                            throw;
-                        } catch (Exception e)
-                        {
-                            failed.Add(row.Name);
-                            Log("Не удалось скачать " + row.Name + ": " + e.Message);
-                        }
-                        RefreshLocalFiles();
+                        await engine.ApplicationDownloads.DownloadAsync(row, ct);
+                        var current = chosen.Snapshot().FirstOrDefault(x => x.ID == row.ID);
+                        if (current != null && current.VersionID == row.VersionID) chosen.Remove(row.ID);
+                        failedDownloads.Remove(row.ID); success++;
+                        RefreshChosen();
                     }
-                    if (failed.Count > 0) throw new Exception("Не удалось скачать: " + String.Join(", ", failed) + ". Эти приложения остались в выбранном.");
-                });
+                    catch (OperationCanceledException) { throw; }
+                    catch (Exception e)
+                    {
+                        failedDownloads.Add(new AppRow { ID = row.ID, Name = row.Name }, row.VersionID);
+                        failures.Add(row.Name);
+                        Log("Не удалось скачать " + row.Name + ": " + e.Message);
+                    }
+                    RefreshLocalFiles();
+                }
+                view.CompleteQueue(success, failures.Count);
+                if (failures.Count > 0) throw new Exception("Не удалось скачать: " + String.Join(", ", failures) + ". Кнопка «Повторить ошибки» повторит только эти приложения.");
             });
         }
         public override void RefreshActions()
         {
+            C<Button>("RetryDownloads").IsEnabled = !busy && failedDownloads.Count > 0;
+            C<Button>("RetryDownloads").Content = "Повторить ошибки (" + failedDownloads.Count + ")";
+            C<Button>("RetryDownloads").ToolTip = String.Join(Environment.NewLine, failedDownloads.Snapshot().Select(x => x.Label));
+            C<Button>("ForgetDownloadErrors").IsEnabled = !busy && failedDownloads.Count > 0;
             C<Button>("AddChosen").IsEnabled = !busy && C<DataGrid>("Apps").SelectedItems.Count > 0;
             C<Button>("ClearChosen").IsEnabled = !busy && chosen.Count > 0;
             C<Button>("Download").IsEnabled = !busy && chosen.Count > 0;

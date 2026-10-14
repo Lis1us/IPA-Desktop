@@ -87,6 +87,7 @@ namespace IpaDesktop
                     object gate = new object();
                     bool stdoutDone = visible, stderrDone = visible;
                     long lastOutput = Stopwatch.GetTimestamp();
+                    string lastProgressMessage = null;
                     DataReceivedEventHandler stdout = delegate(object sender, DataReceivedEventArgs e)
                     {
                         lock (gate)
@@ -97,6 +98,11 @@ namespace IpaDesktop
                                 return;
                             }
                             lastOutput = Stopwatch.GetTimestamp();
+                            if (e.Data.StartsWith("PROGRESS:", StringComparison.Ordinal))
+                            {
+                                if (e.Data == lastProgressMessage) return;
+                                lastProgressMessage = e.Data;
+                            }
                             int count = Math.Min(e.Data.Length, 15000000 - output.Length);
                             if (count > 0)
                             {

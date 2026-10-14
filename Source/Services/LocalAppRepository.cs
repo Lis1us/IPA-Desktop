@@ -17,6 +17,8 @@ namespace IpaDesktop
     public sealed class LocalAppRepository
     {
         readonly string folder;
+        readonly object gate = new object();
+        readonly Dictionary<string, Tuple<long, long, IpaDetails>> metadataCache = new Dictionary<string, Tuple<long, long, IpaDetails>>(StringComparer.OrdinalIgnoreCase);
         public LocalAppRepository(string folder)
         {
             this.folder = Path.GetFullPath(folder);
@@ -25,10 +27,32 @@ namespace IpaDesktop
         {
             return Task.Run(delegate
             {
-                return Directory.GetFiles(folder, "*.ipa").Select(x => new FileInfo(x)).OrderByDescending(x => x.LastWriteTime).Select(x => new LocalRow
+                lock (gate)
                 {
-                    Name = x.Name, Size = (x.Length / 1048576.0).ToString("N1") + " МБ", Path = x.FullName, AppleAccount = IpaMetadata.ReadAccount(x.FullName)
-                }).ToList();
+                var rows = new List<LocalRow>();
+                foreach (var path in Directory.GetFiles(folder, "*.ipa"))
+                {
+                    try
+                    {
+                        var file = new FileInfo(path);
+                        if ((file.Attributes & FileAttributes.ReparsePoint) != 0) continue;
+                        Tuple<long, long, IpaDetails> cached;
+                        if (!metadataCache.TryGetValue(path, out cached) || cached.Item1 != file.Length || cached.Item2 != file.LastWriteTimeUtc.Ticks)
+                        {
+                            cached = Tuple.Create(file.Length, file.LastWriteTimeUtc.Ticks, IpaMetadata.ReadDetails(path));
+                            metadataCache[path] = cached;
+                        }
+                        var metadata = cached.Item3;
+                        rows.Add(new LocalRow { Name = file.Name, Size = StorageAnalysis.Bytes(file.Length), Bytes = file.Length, Path = file.FullName, AppleAccount = metadata.Account, BundleID = metadata.BundleID, AppName = metadata.AppName ?? file.Name, Version = metadata.Version, Build = metadata.Build });
+                    }
+                    catch (FileNotFoundException) { }
+                    catch (DirectoryNotFoundException) { }
+                }
+                StorageAnalysis.Mark(rows);
+                var present = new HashSet<string>(rows.Select(x => x.Path), StringComparer.OrdinalIgnoreCase);
+                foreach (var missing in metadataCache.Keys.Where(x => !present.Contains(x)).ToArray()) metadataCache.Remove(missing);
+                return rows.OrderBy(x => x.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
+                }
             });
         }
         public Task ImportAsync(IEnumerable<string> paths, CancellationToken ct)

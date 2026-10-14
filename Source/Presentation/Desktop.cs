@@ -81,8 +81,25 @@ namespace IpaDesktop
         }
         readonly BufferedJournal journalBuffer = new BufferedJournal();
         System.Windows.Threading.DispatcherTimer journalTimer;
+        readonly QueueProgress queueProgress = new QueueProgress();
+        internal void BeginQueue(string kind, int index, int total, string app)
+        {
+            queueProgress.Begin(kind, index, total, app);
+            C<TextBlock>("Status").Text = kind + " " + index + "/" + total + ": " + app;
+            RenderQueue();
+        }
+        internal void CompleteQueue(int success, int failed) { queueProgress.Complete(success, failed); RenderQueue(); }
+        void RenderQueue()
+        {
+            C<TextBlock>("OperationDetail").Text = queueProgress.Text;
+            C<TextBlock>("OperationDetail").ToolTip = queueProgress.Text;
+            if (!queueProgress.Active) return;
+            C<ProgressBar>("Progress").IsIndeterminate = busy && queueProgress.Indeterminate;
+            C<ProgressBar>("Progress").Value = queueProgress.Value;
+        }
         internal void Log(string text)
         {
+            if (queueProgress.Feed(text)) return;
             journalBuffer.Add(text);
         }
         void FlushJournal()
@@ -108,10 +125,12 @@ namespace IpaDesktop
         {
             if (busy) return;
             busy = true;
+            queueProgress.Reset();
+            C<TextBlock>("OperationDetail").Text = "";
             cancellation = new CancellationTokenSource();
             string[] buttons =
             {
-                "Login", "AccountInfo", "Logout", "Search", "Versions", "VersionInfo", "Download", "RefreshFiles", "ImportFile", "DeleteFiles", "Devices", "InstallFiles", "CheckUpdate", "Rollback", "CheckGuiUpdate", "InstallGuiUpdate", "AddChosen", "ClearChosen", "AddInstall", "ClearInstall", "CheckAppleSupport", "CheckDeviceUpdate", "RollbackDevices"
+                "Login", "AccountInfo", "Logout", "Search", "Versions", "VersionInfo", "Download", "RefreshFiles", "ImportFile", "DeleteFiles", "Devices", "InstallFiles", "CheckUpdate", "Rollback", "CheckGuiUpdate", "InstallGuiUpdate", "AddChosen", "ClearChosen", "AddInstall", "ClearInstall", "CheckAppleSupport", "CheckDeviceUpdate", "RollbackDevices", "RetryDownloads", "ForgetDownloadErrors", "RetryInstalls", "ForgetInstallErrors", "SaveSet", "UseSet", "DeleteSet", "SelectOld", "DeleteStorage", "RefreshStorage"
             };
             foreach (var name in buttons) C<Button>(name).IsEnabled = false;
             C<ItemsControl>("ChosenFiles").IsEnabled = false;
@@ -146,6 +165,7 @@ namespace IpaDesktop
                 C<Button>("Cancel").IsEnabled = false;
                 C<ProgressBar>("Progress").IsIndeterminate = false;
                 C<ProgressBar>("Progress").Value = 0;
+                RenderQueue();
                 StateView();
                 RefreshFiles();
                 ApplyActions();
@@ -170,6 +190,7 @@ namespace IpaDesktop
             journalTimer.Tick += delegate
             {
                 FlushJournal();
+                if (busy) RenderQueue();
             };
             journalTimer.Start();
             w.Closed += delegate
@@ -213,6 +234,19 @@ namespace IpaDesktop
             {
                 if (cancellation != null) cancellation.Cancel();
             });
+            On("ExportDiagnostics", delegate
+            {
+                JournalView.Flush(C<TextBox>("Journal"), journalBuffer, true);
+                var privateValues = new List<string> { Environment.UserName };
+                var email = C<TextBlock>("AccountLabel").Text;
+                if (email.Contains("@")) privateValues.Add(email);
+                foreach (var device in C<ComboBox>("DeviceList").Items.Cast<DeviceRow>()) { privateValues.Add(device.ID); privateValues.Add(device.Name); }
+                var report = DiagnosticReport.Create(C<TextBox>("Journal").Text, engine.Settings.Version ?? "not installed", engine.Settings.DeviceVersion ?? "not installed", privateValues);
+                var dialog = new SaveFileDialog { Filter = "Текстовый отчёт (*.txt)|*.txt", FileName = "IPA-Desktop-diagnostic-" + DateTime.Now.ToString("yyyyMMdd-HHmmss") + ".txt" };
+                if (dialog.ShowDialog(w) != true) return;
+                File.WriteAllText(dialog.FileName, report, Encoding.UTF8);
+                Log("Отчёт диагностики сохранён.");
+            });
             On("OpenFolder", delegate
             {
                 Process.Start(new ProcessStartInfo(engine.Downloads)
@@ -231,7 +265,7 @@ namespace IpaDesktop
             ApplyActions();
             w.Loaded += delegate
             {
-                Log("IPA Desktop 0.1.16. Файлы: " + engine.Downloads);
+                Log("IPA Desktop 0.1.17. Файлы: " + engine.Downloads);
                 if (!checkAtStartup) return;
                 Work("Проверка движка и сохранённого входа…", async delegate(CancellationToken ct)
                 {

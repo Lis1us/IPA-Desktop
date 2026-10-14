@@ -52,6 +52,7 @@ namespace IpaDesktop
                 return runner.Active;
             }
         }
+        public AppSetStore AppSets { get; private set; }
         public AppleSupportService AppleSupport { get; private set; }
         public DeviceService Devices
         {
@@ -112,6 +113,7 @@ namespace IpaDesktop
             AppleSupport = new AppleSupportService(appleSupportProbe);
             Devices = new DeviceService(runner, locator);
             LocalFiles = new LocalAppRepository(Downloads);
+            AppSets = new AppSetStore(root, Downloads);
             ApplicationDownloads = new ApplicationDownloads(tools, Downloads);
         }
         public void Save()

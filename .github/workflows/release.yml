@@ -70,6 +70,10 @@ jobs:
         run: |
           & powershell.exe -NoProfile -ExecutionPolicy Bypass -File Tests/Verify-Engine.ps1 -Live
           if ($LASTEXITCODE -ne 0) { throw 'Direct upstream engine or migration failed' }
+      - name: Verify app sets, storage, progress and diagnostic privacy
+        run: |
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File Tests/Verify-WorkflowFeatures.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Application workflow features failed' }
       - name: Package
         run: |
           & powershell.exe -NoProfile -ExecutionPolicy Bypass -File Scripts/Package.ps1

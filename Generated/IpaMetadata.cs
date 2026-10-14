@@ -1,6 +1,8 @@
 // Generated from Source/. Edit the source classes, then run Sync-Sources.ps1.
+using System.Collections.Generic;
 using System.IO.Compression;
 using System.IO;
+using System.Linq;
 using System.Text;
 using System.Xml;
 using System;
@@ -52,6 +54,82 @@ namespace IpaDesktop
             {
                 return "Не удалось прочитать";
             }
+        }
+        static byte[] EntryBytes(ZipArchiveEntry entry)
+        {
+            if (entry == null) return null;
+            if (entry.Length > Limit) throw new InvalidDataException();
+            using (var source = entry.Open()) using (var target = new MemoryStream())
+            {
+                var buffer = new byte[8192]; int n;
+                while ((n = source.Read(buffer, 0, buffer.Length)) > 0)
+                {
+                    if (target.Length + n > Limit) throw new InvalidDataException();
+                    target.Write(buffer, 0, n);
+                }
+                return target.ToArray();
+            }
+        }
+        static string Value(byte[] bytes, params string[] keys)
+        {
+            if (bytes == null) return null;
+            if (bytes.Length > Limit) throw new InvalidDataException();
+            if (bytes.Length >= 8 && Encoding.ASCII.GetString(bytes, 0, 8) == "bplist00")
+            {
+                var plist = new BinaryPlist(bytes);
+                foreach (var key in keys) { var value = plist.Value(key); if (!String.IsNullOrWhiteSpace(value)) return value; }
+                return null;
+            }
+            var settings = new XmlReaderSettings { DtdProcessing = DtdProcessing.Ignore, XmlResolver = null, MaxCharactersInDocument = Limit };
+            using (var stream = new MemoryStream(bytes)) using (var reader = XmlReader.Create(stream, settings))
+            {
+                var doc = new XmlDocument { XmlResolver = null }; doc.Load(reader);
+                var root = doc.SelectSingleNode("/plist/dict");
+                if (root == null) return null;
+                foreach (var key in keys)
+                    for (var node = root.FirstChild; node != null; node = node.NextSibling)
+                    {
+                        if (node.Name != "key" || !String.Equals(node.InnerText, key, StringComparison.OrdinalIgnoreCase)) continue;
+                        var next = node.NextSibling;
+                        while (next != null && next.NodeType != XmlNodeType.Element) next = next.NextSibling;
+                        if (next != null && (next.Name == "string" || next.Name == "integer") && !String.IsNullOrWhiteSpace(next.InnerText)) return next.InnerText;
+                    }
+                return null;
+            }
+        }
+        static string Field(string text)
+        {
+            if (String.IsNullOrWhiteSpace(text) || text.Length > 320 || text.Any(Char.IsControl)) return null;
+            return text.Trim();
+        }
+        public static IpaDetails ReadDetails(string path)
+        {
+            var details = new IpaDetails { Account = ReadAccount(path) };
+            try
+            {
+                using (var zip = ZipFile.OpenRead(path))
+                {
+                    if (zip.Entries.Count > 30000) return details;
+                    var metadata = EntryBytes(zip.GetEntry("iTunesMetadata.plist"));
+                    details.BundleID = Field(Value(metadata, "softwareVersionBundleId", "bundleId"));
+                    details.AppName = Field(Value(metadata, "itemName"));
+                    details.Version = Field(Value(metadata, "bundleShortVersionString", "bundleVersion"));
+                    var apps = zip.Entries.Where(x => System.Text.RegularExpressions.Regex.IsMatch(x.FullName, @"^Payload/[^/]+\.app/Info\.plist$", System.Text.RegularExpressions.RegexOptions.IgnoreCase)).Take(2).ToArray();
+                    if (apps.Length == 1)
+                    {
+                        var info = EntryBytes(apps[0]);
+                        details.BundleID = Field(Value(info, "CFBundleIdentifier")) ?? details.BundleID;
+                        details.AppName = Field(Value(info, "CFBundleDisplayName", "CFBundleName")) ?? details.AppName;
+                        details.Version = Field(Value(info, "CFBundleShortVersionString")) ?? details.Version;
+                        details.Build = Field(Value(info, "CFBundleVersion"));
+                    }
+                }
+            }
+            catch (Exception e)
+            {
+                if (!(e is IOException || e is InvalidDataException || e is UnauthorizedAccessException || e is XmlException || e is ArgumentException || e is OverflowException)) throw;
+            }
+            return details;
         }
         static bool IsAccountKey(string key)
         {
@@ -159,7 +237,8 @@ namespace IpaDesktop
                 Bounds(pos, size, table);
                 return type == 6 ? Encoding.BigEndianUnicode.GetString(data, pos, size) : Encoding.ASCII.GetString(data, pos, size);
             }
-            public string Account()
+            public string Account() { return Value("appleId"); }
+            public string Value(string wantedKey)
             {
                 int pos = Offset(top);
                 int marker = data[pos++];
@@ -169,7 +248,7 @@ namespace IpaDesktop
                 for (int i = 0; i < count; i++)
                 {
                     var key = Text(IntNumber(pos + i * refSize, refSize));
-                    if (IsAccountKey(key)) return Text(IntNumber(pos + (count + i) * refSize, refSize));
+                    if (String.Equals(key, wantedKey, StringComparison.OrdinalIgnoreCase)) return Text(IntNumber(pos + (count + i) * refSize, refSize));
                 }
                 return null;
             }

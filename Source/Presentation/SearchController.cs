@@ -17,6 +17,7 @@ namespace IpaDesktop
     {
         readonly DownloadSelection chosen = new DownloadSelection();
         readonly SearchSession searchSession = new SearchSession();
+        readonly DownloadSelection failedDownloads = new DownloadSelection();
         string versionApp;
         public SearchController(Desktop view, Engine engine) : base(view, engine)
         {
@@ -177,41 +178,49 @@ namespace IpaDesktop
                 chosen.Remove(id);
                 RefreshChosen();
             });
-            On("Download", delegate
+            On("Download", delegate { StartDownloads(chosen.Snapshot()); });
+            On("RetryDownloads", delegate { StartDownloads(failedDownloads.Snapshot()); });
+            On("ForgetDownloadErrors", delegate { failedDownloads.Clear(); ApplyActions(); });
+        }
+        void StartDownloads(List<DownloadItem> rows)
+        {
+            if (rows.Count == 0) throw new Exception("Добавьте приложения в выбранное.");
+            Work("Скачивание IPA…", async delegate(CancellationToken ct)
             {
-                var rows = chosen.Snapshot();
-                if (rows.Count == 0) throw new Exception("Добавьте приложения в выбранное.");
-                Work("Скачивание выбранных IPA…", async delegate(CancellationToken ct)
+                int index = 0, success = 0;
+                var failures = new List<string>();
+                foreach (var row in rows)
                 {
-                    var failed = new List<string>();
-                    int index = 0;
-                    foreach (var row in rows)
+                    ct.ThrowIfCancellationRequested();
+                    view.BeginQueue("Скачивание", ++index, rows.Count, row.Name);
+                    Log("В очереди: " + row.Label);
+                    try
                     {
-                        ct.ThrowIfCancellationRequested();
-                        index++;
-                        C<TextBlock>("Status").Text = "Скачивание " + index + " из " + rows.Count + ": " + row.Name;
-                        Log("В очереди: " + row.Label);
-                        try
-                        {
-                            await engine.ApplicationDownloads.DownloadAsync(row, ct);
-                            chosen.Remove(row.ID);
-                            RefreshChosen();
-                        } catch (OperationCanceledException)
-                        {
-                            throw;
-                        } catch (Exception e)
-                        {
-                            failed.Add(row.Name);
-                            Log("Не удалось скачать " + row.Name + ": " + e.Message);
-                        }
-                        RefreshLocalFiles();
+                        await engine.ApplicationDownloads.DownloadAsync(row, ct);
+                        var current = chosen.Snapshot().FirstOrDefault(x => x.ID == row.ID);
+                        if (current != null && current.VersionID == row.VersionID) chosen.Remove(row.ID);
+                        failedDownloads.Remove(row.ID); success++;
+                        RefreshChosen();
                     }
-                    if (failed.Count > 0) throw new Exception("Не удалось скачать: " + String.Join(", ", failed) + ". Эти приложения остались в выбранном.");
-                });
+                    catch (OperationCanceledException) { throw; }
+                    catch (Exception e)
+                    {
+                        failedDownloads.Add(new AppRow { ID = row.ID, Name = row.Name }, row.VersionID);
+                        failures.Add(row.Name);
+                        Log("Не удалось скачать " + row.Name + ": " + e.Message);
+                    }
+                    RefreshLocalFiles();
+                }
+                view.CompleteQueue(success, failures.Count);
+                if (failures.Count > 0) throw new Exception("Не удалось скачать: " + String.Join(", ", failures) + ". Кнопка «Повторить ошибки» повторит только эти приложения.");
             });
         }
         public override void RefreshActions()
         {
+            C<Button>("RetryDownloads").IsEnabled = !busy && failedDownloads.Count > 0;
+            C<Button>("RetryDownloads").Content = "Повторить ошибки (" + failedDownloads.Count + ")";
+            C<Button>("RetryDownloads").ToolTip = String.Join(Environment.NewLine, failedDownloads.Snapshot().Select(x => x.Label));
+            C<Button>("ForgetDownloadErrors").IsEnabled = !busy && failedDownloads.Count > 0;
             C<Button>("AddChosen").IsEnabled = !busy && C<DataGrid>("Apps").SelectedItems.Count > 0;
             C<Button>("ClearChosen").IsEnabled = !busy && chosen.Count > 0;
             C<Button>("Download").IsEnabled = !busy && chosen.Count > 0;
