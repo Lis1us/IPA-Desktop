@@ -23,7 +23,7 @@ try {
  $selection=New-Object IpaDesktop.DownloadSelection
  $first=New-Object IpaDesktop.AppRow;$first.Name='MAX';$first.ID='6739530834'
  $second=New-Object IpaDesktop.AppRow;$second.Name='Telegram';$second.ID='686449807'
- $selection.Add($first,$null);$selection.Add($second,'123456')
+ $selection.Add($first,[NullString]::Value);$selection.Add($second,'123456')
  if($selection.Count -ne 2){throw 'Selection did not retain apps from separate searches'}
  $first.Name='MAX alias';$selection.Add($first,'999')
  if($selection.Count -ne 2){throw 'Duplicate App Store ID added'}

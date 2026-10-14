@@ -10,11 +10,11 @@ try {
  $window.FindName('VersionList').Items.Add('Latest version')|Out-Null
  $window.FindName('VersionList').SelectedIndex=0
  $rows=@()
- foreach($name in @('MAX','Telegram Messenger','WhatsApp Messenger','YouTube')){$row=New-Object IpaDesktop.AppRow;$row.Name=$name;$row.ID='6739530834';$rows+=$row}
+ foreach($name in @('MAX','Telegram Messenger','WhatsApp Messenger','YouTube')){$row=New-Object IpaDesktop.AppRow;$row.Name=$name;$row.ID=(6739530834L+$rows.Count).ToString();$rows+=$row}
  $window.FindName('Apps').ItemsSource=$rows
  $window.FindName('Apps').SelectedIndex=0
  $chosen=New-Object IpaDesktop.DownloadSelection
- foreach($row in $rows){$chosen.Add($row,$null);$row.ID=([long]$row.ID+1).ToString()}
+ foreach($row in $rows){$chosen.Add($row,[NullString]::Value)}
  $window.FindName('ChosenApps').ItemsSource=$chosen.Snapshot()
  $window.FindName('ChosenCount').Text='Selected: '+$chosen.Count
  $window.FindName('Download').Content='Download ('+$chosen.Count+')'
