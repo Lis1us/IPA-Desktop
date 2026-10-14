@@ -5,6 +5,10 @@ on:
     branches: [main]
     paths:
       - MainWindow.xaml
+      - '*.cs'
+      - '*.ps1'
+      - Build.cmd
+      - App.ico
       - .github/workflows/release.yml
   workflow_dispatch:
 

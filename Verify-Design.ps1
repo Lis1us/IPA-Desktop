@@ -15,7 +15,7 @@ try {
  $window.FindName('Apps').SelectedIndex=0
  $window.Show()
  [IpaDesktop.WindowTheme]::Apply($window)
- $window.UpdateLayout()
+ $window.Dispatcher.Invoke([Action]{},[Windows.Threading.DispatcherPriority]::ApplicationIdle);$window.UpdateLayout()
  # Force each tab template to load and check minimum-window layout.
  $tabs=$window.FindName('Apps').Parent.Parent.Parent
  # Find the TabControl through the logical tree.
@@ -26,13 +26,14 @@ try {
   }
  }
  $tabs=FindTabs $window
- foreach($index in 0..3){$tabs.SelectedIndex=$index;$window.UpdateLayout()}
+ foreach($index in 0..3){$tabs.SelectedIndex=$index;$window.Dispatcher.Invoke([Action]{},[Windows.Threading.DispatcherPriority]::ApplicationIdle);$window.UpdateLayout()}
  $tabs.SelectedIndex=0
- $window.Width=940;$window.Height=650;$window.UpdateLayout()
+ $window.Width=940;$window.Height=650;$window.Dispatcher.Invoke([Action]{},[Windows.Threading.DispatcherPriority]::ApplicationIdle);$window.UpdateLayout()
+ Write-Host ('Minimum layout: '+$window.FindName('Apps').ActualWidth+' x '+$window.FindName('Apps').ActualHeight)
  if($window.FindName('Apps').ActualHeight -lt 80){throw 'Application table collapsed at minimum size'}
- $window.FindName('VersionList').IsDropDownOpen=$true;$window.UpdateLayout()
+ $window.FindName('VersionList').IsDropDownOpen=$true;$window.Dispatcher.Invoke([Action]{},[Windows.Threading.DispatcherPriority]::ApplicationIdle);$window.UpdateLayout()
  $window.FindName('VersionList').IsDropDownOpen=$false
- $window.Width=1160;$window.Height=800;$window.UpdateLayout()
+ $window.Width=1160;$window.Height=800;$window.Dispatcher.Invoke([Action]{},[Windows.Threading.DispatcherPriority]::ApplicationIdle);$window.UpdateLayout()
  $visual=$window.Content
  $bitmap=New-Object Windows.Media.Imaging.RenderTargetBitmap([int]$visual.ActualWidth,[int]$visual.ActualHeight,96,96,[Windows.Media.PixelFormats]::Pbgra32)
  $bitmap.Render($visual)
