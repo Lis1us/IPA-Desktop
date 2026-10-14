@@ -43,7 +43,7 @@ try {
  New-Item -ItemType Directory -Path $bins -Force|Out-Null
  foreach($name in @('ipatool.exe','idevice_id.exe','ideviceinfo.exe','ideviceinstaller.exe')){[IO.File]::WriteAllText((Join-Path $bins $name),'fixture')}
  $item=New-Object IpaDesktop.DownloadItem;$item.ID='123';$item.Name='Example';$item.VersionID='456'
- $engine.ApplicationDownloads.DownloadAsync($item,[Threading.CancellationToken]::None).GetAwaiter().GetResult()
+ $engine.ApplicationDownloads.DownloadAsync($item,[Threading.CancellationToken]::None).GetAwaiter().GetResult()|Out-Null
  $call=$runner.Calls[$runner.Calls.Count-1]
  if(($call -join ' ') -ne ('download -i 123 --purchase -o '+$engine.Downloads+' --external-version-id 456 --format json')){throw 'Download service changed CLI arguments'}
  $devices=$engine.Devices.FindAsync([Threading.CancellationToken]::None).GetAwaiter().GetResult()
@@ -51,7 +51,7 @@ try {
  foreach($name in @('MAX.ipa','Telegram.ipa')){[IO.File]::WriteAllText((Join-Path $engine.Downloads $name),'fixture')}
  $files=$engine.LocalFiles.ListAsync().GetAwaiter().GetResult()
  if($files.Count -ne 2){throw 'Local repository did not list IPA files'}
- $engine.Devices.InstallAsync($devices[0],$files[0],[Threading.CancellationToken]::None).GetAwaiter().GetResult()
+ $engine.Devices.InstallAsync($devices[0],$files[0],[Threading.CancellationToken]::None).GetAwaiter().GetResult()|Out-Null
  $call=$runner.Calls[$runner.Calls.Count-1]
  if($call[0] -ne '--udid' -or $call[1] -ne $devices[0].ID -or $call[3] -ne $files[0].Path){throw 'Installation service used label instead of UDID/path'}
  $engine.Save()
@@ -61,7 +61,7 @@ try {
  if($restored.Settings.CheckGuiUpdates -or $restored.Settings.AutoUpdate){throw 'Settings/rollback lost user update preferences'}
  $engine.Settings.Current='test';$engine.Save()
  Write-Host 'PASS: injectable process runner; download arguments; device names/UDIDs; local repository; update preferences'
- $desktop=New-Object IpaDesktop.Desktop($engine,$false)
+ $desktop=New-Object IpaDesktop.Desktop($engine,$false,$PSScriptRoot)
  $window=$desktop.Window;$window.Show()
  function Pump {
   $window.Dispatcher.Invoke([Action]{},[Windows.Threading.DispatcherPriority]::ApplicationIdle);$window.UpdateLayout()

@@ -151,9 +151,12 @@ namespace IpaDesktop
         public Desktop() : this(null, true)
         {
         }
-        public Desktop(Engine backend, bool checkAtStartup)
+        public Desktop(Engine backend, bool checkAtStartup) : this(backend, checkAtStartup, AppDomain.CurrentDomain.BaseDirectory)
         {
-            using (var stream = File.OpenRead(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "MainWindow.xaml"))) w = (Window) XamlReader.Load(stream);
+        }
+        public Desktop(Engine backend, bool checkAtStartup, string assetDirectory)
+        {
+            using (var stream = File.OpenRead(Path.Combine(assetDirectory, "MainWindow.xaml"))) w = (Window) XamlReader.Load(stream);
             journalTimer = new System.Windows.Threading.DispatcherTimer(System.Windows.Threading.DispatcherPriority.Background, w.Dispatcher)
             {
                 Interval = TimeSpan.FromMilliseconds(150)
@@ -176,7 +179,7 @@ namespace IpaDesktop
             {
                 WindowTheme.Apply(w);
             };
-            using (var icon = File.OpenRead(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "App.ico")))
+            using (var icon = File.OpenRead(Path.Combine(assetDirectory, "App.ico")))
             {
                 var decoder = new System.Windows.Media.Imaging.IconBitmapDecoder(icon, System.Windows.Media.Imaging.BitmapCreateOptions.PreservePixelFormat, System.Windows.Media.Imaging.BitmapCacheOption.OnLoad);
                 w.Icon = decoder.Frames[0];
