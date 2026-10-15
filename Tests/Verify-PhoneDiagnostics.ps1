@@ -1,9 +1,9 @@
 ﻿$ErrorActionPreference='Stop'
 $projectRoot=Split-Path $PSScriptRoot -Parent
-Add-Type -AssemblyName PresentationFramework,PresentationCore,WindowsBase,System.Xaml
+Add-Type -AssemblyName PresentationFramework,PresentationCore,WindowsBase,System.Xaml,System.Xaml
 [Reflection.Assembly]::LoadFrom((Join-Path $projectRoot 'IPA-Desktop.exe'))|Out-Null
 Copy-Item (Join-Path $projectRoot 'IPA-Desktop.exe') (Join-Path $projectRoot 'IPA-Phone-test.dll') -Force
-Add-Type -ReferencedAssemblies @((Join-Path $projectRoot 'IPA-Phone-test.dll'),'System.dll','System.Core.dll','System.Xml.dll',[Windows.Window].Assembly.Location,[Windows.RoutedEventArgs].Assembly.Location,[Windows.Threading.Dispatcher].Assembly.Location) -TypeDefinition @'
+Add-Type -ReferencedAssemblies @((Join-Path $projectRoot 'IPA-Phone-test.dll'),'System.dll','System.Core.dll','System.Xml.dll','System.Xaml.dll',[Windows.Window].Assembly.Location,[Windows.RoutedEventArgs].Assembly.Location,[Windows.Threading.Dispatcher].Assembly.Location) -TypeDefinition @'
 using System;
 using System.IO;
 using System.Collections.Generic;

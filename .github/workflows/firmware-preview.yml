@@ -8,7 +8,7 @@ permissions:
   actions: read
 concurrency:
   group: firmware-preview-branch
-  cancel-in-progress: true
+  cancel-in-progress: false
 jobs:
   gui:
     runs-on: windows-2022
@@ -52,9 +52,9 @@ jobs:
         id: native-source
         shell: pwsh
         run: |
-          git fetch --no-tags --depth=1 origin f266bdc8a1cea716e0a8643fd2644914e90d09f9
+          git fetch --no-tags --depth=1 origin c3a3936869242e7eba07af76f76a29ae656f73ec
           if($LASTEXITCODE -eq 0){
-            $previous=git rev-parse 'f266bdc8a1cea716e0a8643fd2644914e90d09f9:Tools/FirmwareTools'
+            $previous=git rev-parse 'c3a3936869242e7eba07af76f76a29ae656f73ec:Tools/FirmwareTools'
             $current=git rev-parse 'HEAD:Tools/FirmwareTools'
             if($previous -eq $current){"reuse=true" >> $env:GITHUB_OUTPUT}
           }
@@ -65,7 +65,7 @@ jobs:
         continue-on-error: true
         with:
           name: firmware-native
-          run-id: 38799063817
+          run-id: 38805426261
           github-token: ${{ github.token }}
           path: .
       - uses: msys2/setup-msys2@v2

@@ -44,10 +44,10 @@ namespace IpaDesktop
                 {
                     var info = Flat(await Query("ideviceinfo", new[] { "-u", id }, ct));
                     if ((Get(info, "ProductType") ?? "").StartsWith("iPhone", StringComparison.Ordinal))
-                        list.Add(new DeviceRow { ID = id, Name = (Get(info, "DeviceName") ?? "iPhone") + " · " + Get(info, "ProductType") + " · " + id.Substring(id.Length - 6) });
+                        list.Add(new DeviceRow { ID = id, Name = Get(info, "ProductType") + " · устройство " + (list.Count + 1) });
                 }
                 catch (OperationCanceledException) { throw; }
-                catch (IOException) { list.Add(new DeviceRow { ID = id, Name = "Устройство · " + id.Substring(id.Length - 6) + " — подтвердите доверие" }); }
+                catch (IOException) { list.Add(new DeviceRow { ID = id, Name = "Устройство " + (list.Count + 1) + " — подтвердите доверие" }); }
             }
             return list;
         }
