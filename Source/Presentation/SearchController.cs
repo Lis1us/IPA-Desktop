@@ -19,6 +19,7 @@ namespace IpaDesktop
         readonly SearchSession searchSession = new SearchSession();
         readonly DownloadSelection failedDownloads = new DownloadSelection();
         string versionApp;
+        List<DownloadItem> lastDownloads = new List<DownloadItem>();
         public SearchController(Desktop view, Engine engine) : base(view, engine)
         {
             C<ComboBox>("VersionList").Items.Add("Последняя версия");
@@ -170,6 +171,7 @@ namespace IpaDesktop
             On("ClearChosen", delegate
             {
                 chosen.Clear();
+                lastDownloads.Clear();
                 RefreshChosen();
             });
             SelectionRemove.Attach(C<ItemsControl>("ChosenApps"), delegate(string id)
@@ -179,19 +181,47 @@ namespace IpaDesktop
                 RefreshChosen();
             });
             On("Download", delegate { StartDownloads(chosen.Snapshot()); });
-            On("RetryDownloads", delegate { StartDownloads(failedDownloads.Snapshot()); });
+            On("RetryDownloads", delegate { StartDownloads(failedDownloads.Snapshot(), false); });
             On("ForgetDownloadErrors", delegate { failedDownloads.Clear(); ApplyActions(); });
+            On("AddToSet", delegate
+            {
+                var name = C<ComboBox>("SearchSet").Text.Trim();
+                var rows = SelectedDownloads();
+                if (name.Length == 0) { C<TextBlock>("SearchSetStatus").Text = "Введите название нового набора или выберите существующий."; C<ComboBox>("SearchSet").Focus(); return; }
+                if (rows.Count == 0) { C<TextBlock>("SearchSetStatus").Text = "Добавьте приложения в выбранное."; return; }
+                try
+                {
+                    engine.AppSets.AddApps(name, rows.Select(x => new AppRow { ID = x.ID, Name = x.Name }));
+                    view.RefreshAppSets();
+                    C<ComboBox>("SearchSet").Text = name;
+                    C<TextBlock>("SearchSetStatus").Text = "В набор «" + name + "» добавлено: " + rows.Count + ". Повторы пропущены.";
+                    view.RegisterPrivate(name);
+                }
+                catch (Exception e) { C<TextBlock>("SearchSetStatus").Text = e.Message; Log("Наборы: " + e.Message); }
+            });
+            RefreshSets();
         }
-        internal List<DownloadItem> SelectedDownloads() { return chosen.Snapshot(); }
+        internal List<DownloadItem> SelectedDownloads()
+        {
+            return chosen.Count > 0 ? chosen.Snapshot() : lastDownloads.Select(x => new DownloadItem { ID = x.ID, Name = x.Name, VersionID = x.VersionID }).ToList();
+        }
+        internal void RefreshSets()
+        {
+            var combo = C<ComboBox>("SearchSet");
+            var name = combo.Text;
+            try { combo.ItemsSource = engine.AppSets.Load().Select(x => x.Name).ToArray(); combo.Text = name; }
+            catch (Exception e) { C<TextBlock>("SearchSetStatus").Text = e.Message; }
+        }
         internal void AddSetApps(IEnumerable<AppRow> apps)
         {
             foreach (var app in apps) chosen.Add(app, null);
             RefreshChosen();
             C<TabItem>("SearchTab").IsSelected = true;
         }
-        void StartDownloads(List<DownloadItem> rows)
+        void StartDownloads(List<DownloadItem> rows, bool remember = true)
         {
             if (rows.Count == 0) throw new Exception("Добавьте приложения в выбранное.");
+            if (remember) lastDownloads = rows.Select(x => new DownloadItem { ID = x.ID, Name = x.Name, VersionID = x.VersionID }).ToList();
             Work("Скачивание IPA…", async delegate(CancellationToken ct)
             {
                 int index = 0, success = 0;
@@ -224,12 +254,14 @@ namespace IpaDesktop
         }
         public override void RefreshActions()
         {
+            C<Button>("AddToSet").IsEnabled = !busy && SelectedDownloads().Count > 0;
+            C<ComboBox>("SearchSet").IsEnabled = !busy;
             C<Button>("RetryDownloads").IsEnabled = !busy && failedDownloads.Count > 0;
             C<Button>("RetryDownloads").Content = "Повторить ошибки (" + failedDownloads.Count + ")";
             C<Button>("RetryDownloads").ToolTip = String.Join(Environment.NewLine, failedDownloads.Snapshot().Select(x => x.Label));
             C<Button>("ForgetDownloadErrors").IsEnabled = !busy && failedDownloads.Count > 0;
             C<Button>("AddChosen").IsEnabled = !busy && C<DataGrid>("Apps").SelectedItems.Count > 0;
-            C<Button>("ClearChosen").IsEnabled = !busy && chosen.Count > 0;
+            C<Button>("ClearChosen").IsEnabled = !busy && (chosen.Count > 0 || lastDownloads.Count > 0);
             C<Button>("Download").IsEnabled = !busy && chosen.Count > 0;
             C<ItemsControl>("ChosenApps").IsEnabled = !busy;
             C<Button>("VersionInfo").IsEnabled = !busy && C<DataGrid>("Apps").SelectedItems.Count == 1;
@@ -239,6 +271,8 @@ namespace IpaDesktop
             C<ItemsControl>("ChosenApps").ItemsSource = chosen.Snapshot();
             C<TextBlock>("ChosenCount").Text = chosen.Count == 0 ? "Добавьте приложения из результатов поиска" : "Выбрано: " + chosen.Count + " · сохраняются при новом поиске";
             C<Button>("Download").Content = "Скачать (" + chosen.Count + ")";
+            if (chosen.Count == 0 && lastDownloads.Count > 0) C<TextBlock>("SearchSetStatus").Text = "Для набора: приложения последней загрузки (" + lastDownloads.Count + ").";
+            else C<TextBlock>("SearchSetStatus").Text = chosen.Count > 0 ? "Для набора выбрано: " + chosen.Count + ". Введите название или выберите набор." : "Выберите приложения, затем введите название набора.";
             ApplyActions();
         }
         List<AppRow> SelectedApps()

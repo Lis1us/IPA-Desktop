@@ -53,6 +53,11 @@ namespace IpaDesktop
         }
         internal List<DownloadItem> SelectedDownloads() { return search.SelectedDownloads(); }
         internal void AddSetApps(IEnumerable<AppRow> apps) { search.AddSetApps(apps); }
+        internal void RefreshAppSets()
+        {
+            if (files != null) files.LoadSets();
+            if (search != null) search.RefreshSets();
+        }
         internal void RefreshFiles()
         {
             if (files != null) files.RefreshFiles();
@@ -139,7 +144,7 @@ namespace IpaDesktop
             cancellation = new CancellationTokenSource();
             string[] buttons =
             {
-                "Login", "AccountInfo", "Logout", "Search", "Versions", "VersionInfo", "Download", "RefreshFiles", "ImportFile", "DeleteFiles", "Devices", "InstallFiles", "CheckUpdate", "Rollback", "CheckGuiUpdate", "InstallGuiUpdate", "AddChosen", "ClearChosen", "AddInstall", "ClearInstall", "CheckAppleSupport", "CheckDeviceUpdate", "RollbackDevices", "RetryDownloads", "ForgetDownloadErrors", "RetryInstalls", "ForgetInstallErrors", "SaveSet", "SaveFileSet", "UseSet", "DeleteSet", "SelectOld", "DeleteStorage", "RefreshStorage"
+                "Login", "AccountInfo", "Logout", "Search", "Versions", "VersionInfo", "Download", "RefreshFiles", "ImportFile", "DeleteFiles", "Devices", "InstallFiles", "CheckUpdate", "Rollback", "CheckGuiUpdate", "InstallGuiUpdate", "AddChosen", "ClearChosen", "AddInstall", "ClearInstall", "CheckAppleSupport", "CheckDeviceUpdate", "RollbackDevices", "RetryDownloads", "ForgetDownloadErrors", "RetryInstalls", "ForgetInstallErrors", "SaveSet", "AddToSet", "UseSet", "DeleteSet", "SelectOld", "DeleteStorage", "RefreshStorage"
             };
             foreach (var name in buttons) C<Button>(name).IsEnabled = false;
             C<ItemsControl>("ChosenFiles").IsEnabled = false;
@@ -278,7 +283,7 @@ namespace IpaDesktop
             ApplyActions();
             w.Loaded += delegate
             {
-                Log("IPA Desktop 0.1.18. Файлы: " + engine.Downloads);
+                Log("IPA Desktop 0.1.19. Файлы: " + engine.Downloads);
                 if (!checkAtStartup) return;
                 Work("Проверка движка и сохранённого входа…", async delegate(CancellationToken ct)
                 {

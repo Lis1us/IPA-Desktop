@@ -196,6 +196,34 @@ try {
  if($window.FindName('ChosenFiles').Items.Count -ne 0){throw 'ID set reused IPA from another account'}
  if(!$window.FindName('StorageSummary').Text.Contains('2') -or $window.FindName('StorageFiles').Items.Count -ne 2){throw 'Storage view was not populated'}
  if(!$window.FindName('ExportDiagnostics')){throw 'Diagnostic export control is missing'}
+ if($window.FindName('SaveFileSet')){throw 'Removed IPA set action is still present'}
+ # Inline set creation and additive updates through the editable WPF template.
+ Click 'ClearChosen';$tabs.SelectedIndex=0;Pump
+ $window.FindName('Query').Text='444';Click 'Search';WaitIdle;Click 'AddChosen';Pump
+ $picker=$window.FindName('SearchSet');$picker.ApplyTemplate()|Out-Null
+ $editor=$picker.Template.FindName('PART_EditableTextBox',$picker)
+ if(!$editor -or $editor.Visibility -ne 'Visible'){throw 'Set picker has no visible editable input'}
+ $editor.Text='Inline fixture';Pump
+ if($picker.Text -ne 'Inline fixture'){throw 'Typing a new set name did not update the picker'}
+ Click 'AddToSet';Pump
+ $saved=@($engine.AppSets.Load()|Where-Object Name -eq 'Inline fixture')
+ if($saved.Count -ne 1 -or $saved[0].Apps.Count -ne 1 -or $saved[0].Apps[0].ID -ne '444'){throw 'Inline creation failed'}
+ if($window.FindName('AppSets').Items.Count -ne 2){throw 'Inline set did not refresh the library tab'}
+ $window.FindName('Query').Text='555';Click 'Search';WaitIdle;Click 'AddChosen';Pump
+ $picker.SelectedItem='Inline fixture';Click 'AddToSet';Pump;Click 'AddToSet';Pump
+ $saved=@($engine.AppSets.Load()|Where-Object Name -eq 'Inline fixture')
+ if($saved[0].Apps.Count -ne 2){throw 'Add to set replaced entries or duplicated IDs'}
+ Click 'Download';WaitIdle
+ if($window.FindName('ChosenApps').Items.Count -ne 0 -or !$window.FindName('AddToSet').IsEnabled -or !$window.FindName('SaveSet').IsEnabled){throw 'Set saving became unavailable after successful download'}
+ $tabs.SelectedIndex=4;Pump;$window.FindName('SetName').Text='After download';Click 'SaveSet';Pump
+ $saved=@($engine.AppSets.Load()|Where-Object Name -eq 'After download')
+ if($saved.Count -ne 1 -or $saved[0].Apps.Count -ne 2){throw 'Legacy save button lost the completed download selection'}
+ $tabs.SelectedIndex=0;Pump;$picker.Text='Inline after download';Click 'AddToSet';Pump
+ $saved=@($engine.AppSets.Load()|Where-Object Name -eq 'Inline after download')
+ if($saved.Count -ne 1 -or $saved[0].Apps.Count -ne 2){throw 'Inline save lost the completed download selection'}
+ Click 'ClearChosen';Pump
+ if($window.FindName('AddToSet').IsEnabled -or $window.FindName('SaveSet').IsEnabled){throw 'Explicit clear retained stale set selection'}
+ Write-Host 'PASS: editable inline set picker, additive deduplication, cross-tab refresh, both save buttons after completed download and explicit clear'
  Write-Host 'PASS: retry snapshot/version isolation, queue progress, saved set UI and storage UI'
  Write-Host 'PASS: real controller composition; search/clear/selection/removal; IPA selection/removal; device button/names; account state'
 }finally{

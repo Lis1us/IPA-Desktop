@@ -19,7 +19,7 @@ Windows 10/11 x64-комплект для IPA Desktop, собранный нам
 
 ## Повторная сборка
 
-См. .github/workflows/device-tools.yml в https://github.com/Lis1us/IPA-Desktop. В окружении MSYS2 MINGW64 установите перечисленные в workflow пакеты, затем запустите bash Tools/DeviceTools/build.sh из корня репозитория. Комплект проверяется после удаления MinGW из PATH; фактическое обнаружение и установка на iPhone требуют отдельной проверки с устройством.
+См. .github/workflows/device-tools.yml в https://github.com/iamdarkls/IPA-Desktop. В окружении MSYS2 MINGW64 установите перечисленные в workflow пакеты, затем запустите bash Tools/DeviceTools/build.sh из корня репозитория. Комплект проверяется после удаления MinGW из PATH; фактическое обнаружение и установка на iPhone требуют отдельной проверки с устройством.
 
 ## Автоматические обновления
 

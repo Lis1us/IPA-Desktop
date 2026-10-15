@@ -1,4 +1,4 @@
-<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Title="IPA Desktop · 0.1.18" Width="1160" Height="800" MinWidth="940" MinHeight="720" WindowStartupLocation="CenterScreen" Background="#10151F" Foreground="#EDF1F8" FontFamily="Segoe UI" FontSize="14" UseLayoutRounding="True" SnapsToDevicePixels="True">
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Title="IPA Desktop · 0.1.19" Width="1160" Height="800" MinWidth="940" MinHeight="720" WindowStartupLocation="CenterScreen" Background="#10151F" Foreground="#EDF1F8" FontFamily="Segoe UI" FontSize="14" UseLayoutRounding="True" SnapsToDevicePixels="True">
  <Window.Resources>
   <Style TargetType="Button">
    <Setter Property="Background" Value="#243247"/><Setter Property="Foreground" Value="#EDF1F8"/>
@@ -33,16 +33,17 @@
     <ToggleButton Focusable="False" IsChecked="{Binding IsDropDownOpen, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}" ClickMode="Press">
      <ToggleButton.Template><ControlTemplate TargetType="ToggleButton"><Border x:Name="B" Background="#1C293B" BorderBrush="#34445C" BorderThickness="1" CornerRadius="8"><Path Data="M 0 0 L 4 4 L 8 0" Stroke="#AEC4E2" StrokeThickness="1.5" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,12,0"/></Border><ControlTemplate.Triggers><Trigger Property="IsMouseOver" Value="True"><Setter TargetName="B" Property="BorderBrush" Value="#8CB9FF"/></Trigger></ControlTemplate.Triggers></ControlTemplate></ToggleButton.Template>
     </ToggleButton>
-    <ContentPresenter IsHitTestVisible="False" Content="{TemplateBinding SelectionBoxItem}" ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}" Margin="12,9,32,9" VerticalAlignment="Center"/>
+    <ContentPresenter x:Name="SelectionContent" IsHitTestVisible="False" Content="{TemplateBinding SelectionBoxItem}" ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}" Margin="12,9,32,9" VerticalAlignment="Center"/>
+    <TextBox x:Name="PART_EditableTextBox" Visibility="Collapsed" Background="#1C293B" Foreground="#EDF1F8" BorderThickness="0" Margin="6,3,30,3" Padding="6,4" VerticalContentAlignment="Center"/>
     <Popup x:Name="PART_Popup" Placement="Bottom" IsOpen="{TemplateBinding IsDropDownOpen}" AllowsTransparency="True" Focusable="False" PopupAnimation="Fade">
      <Border Background="#1C293B" BorderBrush="#405574" BorderThickness="1" CornerRadius="8" MinWidth="{TemplateBinding ActualWidth}" MaxHeight="{TemplateBinding MaxDropDownHeight}" Padding="4"><ScrollViewer CanContentScroll="True"><ItemsPresenter KeyboardNavigation.DirectionalNavigation="Contained"/></ScrollViewer></Border>
     </Popup>
-   </Grid><ControlTemplate.Triggers><Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.45"/></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter>
+   </Grid><ControlTemplate.Triggers><Trigger Property="IsEditable" Value="True"><Setter TargetName="SelectionContent" Property="Visibility" Value="Collapsed"/><Setter TargetName="PART_EditableTextBox" Property="Visibility" Value="Visible"/></Trigger><Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.45"/></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter>
   </Style>
  </Window.Resources>
  <Grid Margin="24,18,24,20">
   <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-  <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><StackPanel><StackPanel Orientation="Horizontal"><Image x:Name="BrandIcon" Width="46" Height="46" Margin="0,0,12,0"/><TextBlock Text="IPA Desktop" FontSize="30" FontWeight="SemiBold" VerticalAlignment="Center"/><Border Background="#23354E" CornerRadius="6" Padding="8,4" Margin="12,0,0,0" VerticalAlignment="Center"><TextBlock Text="0.1.18" Foreground="#AFCDF7" FontSize="12"/></Border></StackPanel><TextBlock Text="Приложения для iPhone — поиск, загрузка и установка" Foreground="#9BACBF" Margin="0,6,0,20"/></StackPanel><StackPanel Grid.Column="1" HorizontalAlignment="Right"><TextBlock x:Name="EngineVersion" Text="Движок не установлен" Foreground="#78B7FF" HorizontalAlignment="Right"/><TextBlock x:Name="AccountLabel" Text="Аккаунт не проверен" Margin="0,6,0,0" Foreground="#9BACBF"/></StackPanel></Grid>
+  <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><StackPanel><StackPanel Orientation="Horizontal"><Image x:Name="BrandIcon" Width="46" Height="46" Margin="0,0,12,0"/><TextBlock Text="IPA Desktop" FontSize="30" FontWeight="SemiBold" VerticalAlignment="Center"/><Border Background="#23354E" CornerRadius="6" Padding="8,4" Margin="12,0,0,0" VerticalAlignment="Center"><TextBlock Text="0.1.19" Foreground="#AFCDF7" FontSize="12"/></Border></StackPanel><TextBlock Text="Приложения для iPhone — поиск, загрузка и установка" Foreground="#9BACBF" Margin="0,6,0,20"/></StackPanel><StackPanel Grid.Column="1" HorizontalAlignment="Right"><TextBlock x:Name="EngineVersion" Text="Движок не установлен" Foreground="#78B7FF" HorizontalAlignment="Right"/><TextBlock x:Name="AccountLabel" Text="Аккаунт не проверен" Margin="0,6,0,0" Foreground="#9BACBF"/></StackPanel></Grid>
   <StackPanel Grid.Row="1"><TextBlock x:Name="UpdateNotice" Visibility="Collapsed" Foreground="#8CBAFF" Margin="0,0,0,8"/><WrapPanel x:Name="AccountActions"><Button x:Name="Login" Content="Войти в Apple Account" Background="#3878E5"/><Button x:Name="AccountInfo" Content="Проверить аккаунт"/><Button x:Name="Logout" Content="Выйти"/><Button x:Name="OpenFolder" Content="Папка IPA"/></WrapPanel></StackPanel>
   <TabControl Grid.Row="2" Margin="0,12,0,16">
    <TabItem x:Name="SearchTab" Header="Поиск и загрузка"><Grid Margin="18"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
@@ -50,7 +51,7 @@
     <DataGrid x:Name="Apps" Grid.Row="1" SelectionMode="Extended"><DataGrid.Columns><DataGridTextColumn Header="Приложение" Binding="{Binding Name}" Width="*"/><DataGridTextColumn Header="App Store ID" Binding="{Binding ID}" Width="180"/></DataGrid.Columns></DataGrid>
     <WrapPanel Grid.Row="2" Margin="0,16,0,0"><Button x:Name="Versions" Content="Список версий"/><ComboBox x:Name="VersionList" Margin="0,0,8,8"/><Button x:Name="VersionInfo" Content="Сведения"/><Button x:Name="AddChosen" Content="В выбранное" ToolTip="Добавить выделенные строки или обновить выбранную версию. Можно также добавлять одним кликом по строке."/><Button x:Name="Download" Content="Скачать (0)" Background="#3878E5"/></WrapPanel>
     <Border Grid.Row="3" Background="#101A29" BorderBrush="#2B3E58" BorderThickness="1" CornerRadius="8" Padding="10,6">
-     <Grid><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+     <Grid><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
       <DockPanel><Button x:Name="RetryDownloads" Content="Повторить ошибки (0)" DockPanel.Dock="Right" Padding="8,3" Margin="8,0,0,0" FontSize="12"/><Button x:Name="ForgetDownloadErrors" Content="Сбросить ошибки" ToolTip="Убрать сохранённые ошибки без повторной загрузки" DockPanel.Dock="Right" Padding="8,3" Margin="8,0,0,0" FontSize="12"/><Button x:Name="ClearChosen" Content="Очистить" DockPanel.Dock="Right" Padding="8,3" Margin="8,0,0,0" FontSize="12"/><TextBlock x:Name="ChosenCount" TextTrimming="CharacterEllipsis" Text="ЛКМ по приложению — добавить в выбранное" VerticalAlignment="Center" Foreground="#AFC6E7" FontSize="12"/></DockPanel>
       <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled" Margin="0,5,0,0" Height="54">
        <ItemsControl x:Name="ChosenApps"><ItemsControl.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal"/></ItemsPanelTemplate></ItemsControl.ItemsPanel><ItemsControl.ItemTemplate><DataTemplate>
@@ -60,6 +61,11 @@
         </StackPanel></Border>
        </DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
       </ScrollViewer>
+      <DockPanel Grid.Row="2" Margin="0,6,0,0" LastChildFill="True">
+       <ComboBox x:Name="SearchSet" IsEditable="True" IsTextSearchEnabled="False" MinWidth="180" Width="210" Margin="0,0,8,0" ToolTip="Выберите набор или введите название нового"/>
+       <Button x:Name="AddToSet" Content="Добавить в набор" Padding="10,6" Margin="0,0,8,0"/>
+       <TextBlock x:Name="SearchSetStatus" Text="Выберите набор или введите новое название" Foreground="#9BACBF" FontSize="12" TextTrimming="CharacterEllipsis" TextWrapping="Wrap" VerticalAlignment="Center"/>
+      </DockPanel>
      </Grid>
     </Border>
    </Grid></TabItem>
@@ -69,7 +75,7 @@
  <TextBlock x:Name="AppleSupportStatus" Text="Компоненты Apple: проверка при запуске" Foreground="#9BACBF" VerticalAlignment="Center" FontSize="12" TextWrapping="Wrap"/>
 </DockPanel></StackPanel><DataGrid x:Name="Files" Grid.Row="1" SelectionMode="Extended"><DataGrid.Columns><DataGridTextColumn Header="Файл" Binding="{Binding Name}" Width="*"/><DataGridTextColumn Header="Apple Account" Binding="{Binding AppleAccount}" Width="280"/><DataGridTextColumn Header="Размер" Binding="{Binding Size}" Width="140"/></DataGrid.Columns></DataGrid><WrapPanel Grid.Row="2" Margin="0,12,0,0"><Button x:Name="AddInstall" Content="В выбранное"/><Button x:Name="InstallFiles" Content="Установить (0)" Background="#3878E5"/><TextBlock Text="Подключите iPhone и выберите устройство." Foreground="#9BACBF" VerticalAlignment="Center" Margin="4,0,0,8"/></WrapPanel>
     <Border Grid.Row="3" Background="#101A29" BorderBrush="#2B3E58" BorderThickness="1" CornerRadius="8" Padding="10,6">
-     <Grid><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+     <Grid><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
       <DockPanel><Button x:Name="RetryInstalls" Content="Повторить ошибки (0)" DockPanel.Dock="Right" Padding="8,3" Margin="8,0,0,0" FontSize="12"/><Button x:Name="ForgetInstallErrors" Content="Сбросить ошибки" ToolTip="Убрать сохранённые ошибки без повторной установки" DockPanel.Dock="Right" Padding="8,3" Margin="8,0,0,0" FontSize="12"/><Button x:Name="ClearInstall" Content="Очистить" DockPanel.Dock="Right" Padding="8,3" Margin="8,0,0,0" FontSize="12"/><TextBlock x:Name="InstallCount" TextTrimming="CharacterEllipsis" Text="ЛКМ по файлу — добавить к установке" VerticalAlignment="Center" Foreground="#AFC6E7" FontSize="12"/></DockPanel>
       <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled" Margin="0,5,0,0" Height="54">
        <ItemsControl x:Name="ChosenFiles"><ItemsControl.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal"/></ItemsPanelTemplate></ItemsControl.ItemsPanel><ItemsControl.ItemTemplate><DataTemplate>
@@ -84,7 +90,7 @@
    <TabItem Header="Обновления"><ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel Margin="24">
     <Border Background="#1C293B" BorderBrush="#34445C" BorderThickness="1" CornerRadius="10" Padding="20" Margin="0,0,0,24"><StackPanel>
      <TextBlock Text="IPA Desktop" FontSize="22" FontWeight="SemiBold"/>
-     <TextBlock x:Name="GuiVersionStatus" Text="Установлена версия 0.1.18" Foreground="#8CBAFF" Margin="0,8,0,14"/>
+     <TextBlock x:Name="GuiVersionStatus" Text="Установлена версия 0.1.19" Foreground="#8CBAFF" Margin="0,8,0,14"/>
      <CheckBox x:Name="CheckGuiUpdates" Content="Проверять новые версии программы при запуске" Foreground="#EDF1F8" Margin="0,0,0,16"/>
      <WrapPanel><Button x:Name="CheckGuiUpdate" Content="Проверить версию"/><Button x:Name="InstallGuiUpdate" Content="Установить обновление" IsEnabled="False" Background="#3878E5"/><Button x:Name="OpenGuiReleases" Content="Все версии"/></WrapPanel>
      <TextBlock Text="Установка — после подтверждения. Программа перезапустится, ваши IPA и настройки сохранятся." Foreground="#9BACBF" TextWrapping="Wrap"/>
@@ -104,8 +110,7 @@
      <TextBlock Text="Выберите приложения в поиске и сохраните их ID. Набор можно скачать заново под любым Apple Account." Foreground="#9BACBF" TextWrapping="Wrap" Margin="0,5,0,12"/>
      <TextBlock Text="Название набора" Foreground="#AFC6E7" FontSize="12" Margin="0,0,0,5"/>
      <TextBox x:Name="SetName" MaxLength="64" ToolTip="Например: Базовый набор" Margin="0,0,0,8"/>
-     <Button x:Name="SaveSet" Content="Сохранить из поиска" HorizontalAlignment="Left"/>
-     <Button x:Name="SaveFileSet" Content="Сохранить ID из IPA" HorizontalAlignment="Left" Margin="0,0,0,16"/>
+     <Button x:Name="SaveSet" Content="Сохранить из поиска" ToolTip="Сохраняет выбранные приложения; после скачивания — список последней загрузки. Укажите название набора выше." HorizontalAlignment="Left"/>
      <ComboBox x:Name="AppSets" DisplayMemberPath="Label" MinWidth="180" Margin="0,0,0,10"/>
      <Button x:Name="UseSet" Content="Добавить к скачиванию" Background="#3878E5" HorizontalAlignment="Left"/>
      <Button x:Name="DeleteSet" Content="Удалить набор" HorizontalAlignment="Left" Margin="0,0,0,12"/>

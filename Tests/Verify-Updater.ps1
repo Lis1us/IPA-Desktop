@@ -1,4 +1,4 @@
-$projectRoot=Split-Path $PSScriptRoot -Parent
+﻿$projectRoot=Split-Path $PSScriptRoot -Parent
 $ErrorActionPreference='Stop'
 [Reflection.Assembly]::LoadFrom((Join-Path $projectRoot 'IPA-Desktop.exe'))|Out-Null
 Add-Type -AssemblyName System.IO.Compression,System.IO.Compression.FileSystem
@@ -13,7 +13,7 @@ try {
  $release.tag_name='v0.1.7'
  $asset=New-Object IpaDesktop.Asset
  $asset.name='IPA-Desktop-0.1.7-Windows.zip'
- $asset.browser_download_url='https://github.com/Lis1us/IPA-Desktop/releases/download/v0.1.7/IPA-Desktop-0.1.7-Windows.zip'
+ $asset.browser_download_url='https://github.com/iamdarkls/IPA-Desktop/releases/download/v0.1.7/IPA-Desktop-0.1.7-Windows.zip'
  $asset.size=123
  $asset.digest='sha256:'+('a'*64)
  $release.assets=@($asset)

@@ -686,7 +686,7 @@ namespace IpaDesktop
             ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
             var h = new HttpClient();
             h.Timeout = TimeSpan.FromMinutes(15);
-            h.DefaultRequestHeaders.UserAgent.ParseAdd("IPA-Desktop/0.1.17");
+            h.DefaultRequestHeaders.UserAgent.ParseAdd("IPA-Desktop/0.1.19");
             return h;
         }
     }
@@ -1307,6 +1307,14 @@ namespace IpaDesktop
             sets.Add(set);
             Write(sets);
         }
+        public void AddApps(string name, IEnumerable<AppRow> apps)
+        {
+            name = (name ?? "").Trim();
+            var existing = Load().FirstOrDefault(x => String.Equals(x.Name, name, StringComparison.OrdinalIgnoreCase));
+            var combined = existing == null ? new List<AppRow>() : ResolveApps(existing).ToList();
+            combined.AddRange(apps);
+            SaveApps(name, combined);
+        }
         public void Save(string name, IEnumerable<LocalRow> rows)
         {
             SaveApps(name, rows.Select(row => FromFile(Path.GetFileName(row.Path), row.Path)).ToArray());
@@ -1681,7 +1689,7 @@ namespace IpaDesktop
     public sealed class EngineUpdater
     {
         public const string SourceRepository = "Sorvigolova/ipatool";
-        public const string DeviceRepository = "Lis1us/IPA-Desktop";
+        public const string DeviceRepository = "iamdarkls/IPA-Desktop";
         public const string DeviceTagPrefix = "device-tools-v";
         public const string WindowsAssetName = "windows_amd64_ipatool-cpp.zip";
         static readonly string[] DeviceFiles = { "idevice_id.exe", "ideviceinfo.exe", "ideviceinstaller.exe", "libimobiledevice-1.0.dll", "libplist-2.0.dll" };

@@ -17,7 +17,7 @@ namespace IpaDesktop
     public sealed class EngineUpdater
     {
         public const string SourceRepository = "Sorvigolova/ipatool";
-        public const string DeviceRepository = "Lis1us/IPA-Desktop";
+        public const string DeviceRepository = "iamdarkls/IPA-Desktop";
         public const string DeviceTagPrefix = "device-tools-v";
         public const string WindowsAssetName = "windows_amd64_ipatool-cpp.zip";
         static readonly string[] DeviceFiles = { "idevice_id.exe", "ideviceinfo.exe", "ideviceinstaller.exe", "libimobiledevice-1.0.dll", "libplist-2.0.dll" };

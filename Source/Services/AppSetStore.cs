@@ -63,6 +63,14 @@ namespace IpaDesktop
             sets.Add(set);
             Write(sets);
         }
+        public void AddApps(string name, IEnumerable<AppRow> apps)
+        {
+            name = (name ?? "").Trim();
+            var existing = Load().FirstOrDefault(x => String.Equals(x.Name, name, StringComparison.OrdinalIgnoreCase));
+            var combined = existing == null ? new List<AppRow>() : ResolveApps(existing).ToList();
+            combined.AddRange(apps);
+            SaveApps(name, combined);
+        }
         public void Save(string name, IEnumerable<LocalRow> rows)
         {
             SaveApps(name, rows.Select(row => FromFile(Path.GetFileName(row.Path), row.Path)).ToArray());

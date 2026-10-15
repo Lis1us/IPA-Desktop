@@ -3,7 +3,7 @@ from pathlib import Path
 import json, os, re, urllib.request, urllib.error, urllib.parse
 
 PROJECTS=('libplist','libimobiledevice-glue','libusbmuxd','libtatsu','libimobiledevice','ideviceinstaller')
-REPO='Lis1us/IPA-Desktop'
+REPO='iamdarkls/IPA-Desktop'
 
 def version(tag):
     match=re.fullmatch(r'v?(\d+)\.(\d+)\.(\d+)',tag or '')

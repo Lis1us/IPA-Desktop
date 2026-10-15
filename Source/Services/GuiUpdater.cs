@@ -15,7 +15,7 @@ namespace IpaDesktop
 {
     public static class GuiUpdater
     {
-        public const string CurrentVersion = "0.1.18";
+        public const string CurrentVersion = "0.1.19";
         public static readonly string[] PackageFiles =
         {
             "IPA-Desktop.exe",
@@ -65,7 +65,7 @@ namespace IpaDesktop
             using (var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct))
             {
                 timeout.CancelAfter(TimeSpan.FromSeconds(15));
-                using (var h = Client()) using (var response = await h.GetAsync("https://api.github.com/repos/Lis1us/IPA-Desktop/releases/latest", timeout.Token))
+                using (var h = Client()) using (var response = await h.GetAsync("https://api.github.com/repos/iamdarkls/IPA-Desktop/releases/latest", timeout.Token))
                 {
                     response.EnsureSuccessStatusCode();
                     var r = JsonCodec.Deserialize<Release> (await response.Content.ReadAsStringAsync());
@@ -79,7 +79,7 @@ namespace IpaDesktop
             var matches = (release.assets ?? new Asset[0]).Where(a => a.name == "IPA-Desktop-" + version + "-Windows.zip").ToArray();
             if (matches.Length != 1) throw new InvalidDataException("В релизе нет единственного ZIP для Windows.");
             var asset = matches[0];
-            string expected = "https://github.com/Lis1us/IPA-Desktop/releases/download/" + release.tag_name + "/" + asset.name;
+            string expected = "https://github.com/iamdarkls/IPA-Desktop/releases/download/" + release.tag_name + "/" + asset.name;
             if (asset.browser_download_url != expected || asset.size <= 0 || asset.size > 64 * 1024 * 1024 || asset.digest == null || !System.Text.RegularExpressions.Regex.IsMatch(asset.digest, "^sha256:[0-9a-fA-F]{64}$")) throw new InvalidDataException("Не удалось проверить источник, размер или SHA-256 обновления.");
             return asset;
         }

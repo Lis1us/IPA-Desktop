@@ -68,25 +68,14 @@ namespace IpaDesktop
             On("SaveSet", delegate
             {
                 engine.AppSets.SaveApps(C<TextBox>("SetName").Text, view.SelectedDownloads().Select(x => new AppRow { ID = x.ID, Name = x.Name }));
-                LoadSets();
+                view.RefreshAppSets();
                 C<TextBlock>("SetStatus").Text = "Набор сохранён по App Store ID. Аккаунт и версии IPA не сохраняются.";
-            });
-            On("SaveFileSet", delegate
-            {
-                Work("Сохранение ID из IPA…", async delegate(CancellationToken ct)
-                {
-                    var name = C<TextBox>("SetName").Text;
-                    var rows = installChosen.Snapshot();
-                    await Task.Run(delegate { ct.ThrowIfCancellationRequested(); engine.AppSets.Save(name, rows); }, ct);
-                    LoadSets();
-                    C<TextBlock>("SetStatus").Text = "Сохранены App Store ID из IPA, без привязки к аккаунту.";
-                });
             });
             On("DeleteSet", delegate
             {
                 var set = C<ComboBox>("AppSets").SelectedItem as AppSet;
                 if (set == null) return;
-                engine.AppSets.Delete(set.Name); LoadSets();
+                engine.AppSets.Delete(set.Name); view.RefreshAppSets();
                 C<TextBlock>("SetStatus").Text = "Набор удалён. IPA-файлы сохранены.";
             });
             On("UseSet", delegate
@@ -99,7 +88,7 @@ namespace IpaDesktop
                     ct.ThrowIfCancellationRequested();
                     // Saving also migrates legacy filename sets after all IDs were verified.
                     engine.AppSets.SaveApps(set.Name, apps);
-                    LoadSets();
+                    view.RefreshAppSets();
                     view.AddSetApps(apps);
                     C<TextBlock>("SetStatus").Text = "В очередь скачивания добавлено: " + apps.Length + ". Войдите в нужный Apple Account и нажмите «Скачать».";
                     view.RegisterPrivate(set.Name);
@@ -149,7 +138,7 @@ namespace IpaDesktop
             On("RetryInstalls", delegate { StartInstall(failedInstalls.Snapshot()); });
             On("ForgetInstallErrors", delegate { failedInstalls.Clear(); ApplyActions(); });
         }
-        void LoadSets()
+        internal void LoadSets()
         {
             var combo = C<ComboBox>("AppSets");
             var previous = combo.SelectedItem as AppSet;
@@ -237,7 +226,6 @@ namespace IpaDesktop
             C<Button>("RetryInstalls").ToolTip = String.Join(Environment.NewLine, failedInstalls.Snapshot().Select(x => x.Name));
             C<Button>("ForgetInstallErrors").IsEnabled = !busy && failedInstalls.Count > 0;
             C<Button>("SaveSet").IsEnabled = !busy && view.SelectedDownloads().Count > 0;
-            C<Button>("SaveFileSet").IsEnabled = !busy && installChosen.Count > 0;
             C<Button>("UseSet").IsEnabled = !busy && C<ComboBox>("AppSets").SelectedItem != null;
             C<Button>("DeleteSet").IsEnabled = !busy && C<ComboBox>("AppSets").SelectedItem != null;
             C<Button>("SelectOld").IsEnabled = !busy && localRows.Any(x => x.IsOld);

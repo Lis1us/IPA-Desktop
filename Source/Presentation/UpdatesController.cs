@@ -55,7 +55,7 @@ namespace IpaDesktop
             });
             On("OpenGuiReleases", delegate
             {
-                Process.Start(new ProcessStartInfo("https://github.com/Lis1us/IPA-Desktop/releases")
+                Process.Start(new ProcessStartInfo("https://github.com/iamdarkls/IPA-Desktop/releases")
                 {
                     UseShellExecute = true
                 });
@@ -84,7 +84,7 @@ namespace IpaDesktop
             });
             On("OpenDeviceReleases", delegate
             {
-                Process.Start(new ProcessStartInfo("https://github.com/Lis1us/IPA-Desktop/releases?q=device-tools") { UseShellExecute = true });
+                Process.Start(new ProcessStartInfo("https://github.com/iamdarkls/IPA-Desktop/releases?q=device-tools") { UseShellExecute = true });
             });
             On("CheckUpdate", delegate
             {

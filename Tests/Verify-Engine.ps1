@@ -1,4 +1,4 @@
-param([switch]$Live)
+﻿param([switch]$Live)
 $ErrorActionPreference='Stop'
 $projectRoot=Split-Path $PSScriptRoot -Parent
 [Reflection.Assembly]::LoadFrom((Join-Path $projectRoot 'IPA-Desktop.exe'))|Out-Null
@@ -20,7 +20,7 @@ try {
  if(![IpaDesktop.EngineUpdater]::HasDeviceTools((Join-Path $temp 'Versions/devices'))){throw 'Device import is incomplete'}
  $engine=New-Object IpaDesktop.Engine($temp)
  $engine.Settings.Current='direct';$engine.Settings.Source='Sorvigolova/ipatool';$engine.Settings.Version='1.1.8'
- $engine.Settings.DeviceSource='Lis1us/IPA-Desktop';$engine.Settings.DeviceCurrent='devices';$engine.Settings.DeviceVersion='4.2.2'
+ $engine.Settings.DeviceSource='iamdarkls/IPA-Desktop';$engine.Settings.DeviceCurrent='devices';$engine.Settings.DeviceVersion='4.2.2'
  $engine.Settings.Previous='legacy';$engine.Settings.PreviousVersion='4.2.2'
  $engine.Settings.AutoUpdate=$false;$engine.Settings.CheckGuiUpdates=$false
  $direct=Join-Path $temp 'Versions/direct/windows_amd64/nested'
@@ -64,12 +64,12 @@ try {
  if(!$rejected){throw 'Bundled source accepted as direct engine'}
  $release.tag_name='device-tools-v1.0.0'
  $asset.name='IPA-DeviceTools-1.0.0-Windows-x64.zip';$asset.digest='sha256:'+('a'*64)
- $asset.browser_download_url='https://github.com/Lis1us/IPA-Desktop/releases/download/device-tools-v1.0.0/'+$asset.name
+ $asset.browser_download_url='https://github.com/iamdarkls/IPA-Desktop/releases/download/device-tools-v1.0.0/'+$asset.name
  [IpaDesktop.EngineUpdater]::SelectDeviceAsset($release)|Out-Null
  $asset.browser_download_url='https://github.com/kda2495/IPA_Downloader/releases/download/device-tools-v1.0.0/'+$asset.name
  $rejected=$false;try{[IpaDesktop.EngineUpdater]::SelectDeviceAsset($release)|Out-Null}catch{$rejected=$true}
  if(!$rejected){throw 'Device update accepted IPA_Downloader binary source'}
- $asset.browser_download_url='https://github.com/Lis1us/IPA-Desktop/releases/download/device-tools-v1.0.0/'+$asset.name
+ $asset.browser_download_url='https://github.com/iamdarkls/IPA-Desktop/releases/download/device-tools-v1.0.0/'+$asset.name
  $asset.digest=$null;$rejected=$false;try{[IpaDesktop.EngineUpdater]::SelectDeviceAsset($release)|Out-Null}catch{$rejected=$true}
  if(!$rejected){throw 'Device update accepted missing GitHub digest'}
  Write-Host 'PASS: own device package, independent tool lookup, legacy/direct rollback, persisted settings, release selection'
