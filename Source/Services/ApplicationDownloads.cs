@@ -14,6 +14,7 @@ using System.Web.Script.Serialization;
 
 namespace IpaDesktop
 {
+    /// <summary>Загружает IPA под текущей сессией ipatool в уникальный файл, исключая перезапись чужой копии.</summary>
     public sealed class ApplicationDownloads
     {
         readonly IAppToolClient tools;
@@ -23,6 +24,7 @@ namespace IpaDesktop
             this.tools = tools;
             this.folder = folder;
         }
+        /// <summary>Запускает скачивание с получением лицензии и отдельным назначением для каждого запроса.</summary>
         public async Task DownloadAsync(DownloadItem item, CancellationToken ct)
         {
             if (!AppSetStore.ValidId(item.ID)) throw new IOException("Некорректный App Store ID.");

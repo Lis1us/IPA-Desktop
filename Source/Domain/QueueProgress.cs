@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Text.RegularExpressions;
 namespace IpaDesktop
 {
+    /// <summary>Потокобезопасное состояние прогресса; использует только метрики, реально полученные от утилиты.</summary>
     public sealed class TransferUpdate
     {
         public double Percent { get; set; }
@@ -25,6 +26,7 @@ namespace IpaDesktop
             return value <= 100 ? new TransferUpdate { Percent = value, Metrics = match.Groups[2].Value } : null;
         }
     }
+    /// <summary>Потокобезопасное состояние прогресса; использует только метрики, реально полученные от утилиты.</summary>
     public sealed class QueueProgress
     {
         readonly object gate = new object();
@@ -37,6 +39,7 @@ namespace IpaDesktop
         {
             lock (gate) { kind = operation; index = position; count = total; name = app; metrics = null; summary = null; percent = null; elapsed.Restart(); }
         }
+        /// <summary>Разбирает реальный вывод CLI под блокировкой; неподдерживаемые метрики не выдумываются.</summary>
         public bool Feed(string line)
         {
             lock (gate)
@@ -52,6 +55,7 @@ namespace IpaDesktop
         {
             lock (gate) { summary = "Готово: " + success + " · ошибок: " + failures + " · всего: " + count; percent = 100; index = count; elapsed.Stop(); }
         }
+        /// <summary>Фиксирует отмену или ошибку и прекращает приём поздних сообщений прогресса.</summary>
         public void Stop(string reason)
         {
             lock (gate)

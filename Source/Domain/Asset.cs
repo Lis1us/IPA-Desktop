@@ -1,5 +1,6 @@
 namespace IpaDesktop
 {
+    /// <summary>Описание архива GitHub Releases; имена полей сохраняют контракт JSON API.</summary>
     public class Asset
     {
         public string name

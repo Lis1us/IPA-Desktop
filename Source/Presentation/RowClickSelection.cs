@@ -13,8 +13,10 @@ using Microsoft.Win32;
 
 namespace IpaDesktop
 {
+    /// <summary>Добавляет строку одним нажатием ЛКМ, не перехватывая прокрутку и другие элементы таблицы.</summary>
     public static class RowClickSelection
     {
+        /// <summary>Обрабатывает клик по строке таблицы, исключая вложенные кнопки и полосы прокрутки.</summary>
         public static void Attach(DataGrid grid, Action<object> add)
         {
             object pressed = null;

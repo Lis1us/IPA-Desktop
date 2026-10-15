@@ -1,5 +1,6 @@
 namespace IpaDesktop
 {
+    /// <summary>Строка локального IPA: путь, размер, версия, аккаунт и признак старой версии.</summary>
     public class LocalRow
     {
         public long Bytes { get; set; }

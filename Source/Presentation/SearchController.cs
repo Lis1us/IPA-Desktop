@@ -13,6 +13,7 @@ using Microsoft.Win32;
 
 namespace IpaDesktop
 {
+    /// <summary>Поиск, выбор версий и очередь скачивания; сохраняет снимки ошибок и последнего пакета.</summary>
     public sealed class SearchController : WindowController
     {
         readonly DownloadSelection chosen = new DownloadSelection();
@@ -183,79 +184,51 @@ namespace IpaDesktop
             On("Download", delegate { StartDownloads(chosen.Snapshot()); });
             On("RetryDownloads", delegate { StartDownloads(failedDownloads.Snapshot(), false); });
             On("ForgetDownloadErrors", delegate { failedDownloads.Clear(); ApplyActions(); });
-            On("AddToSet", delegate
-            {
-                var name = C<ComboBox>("SearchSet").Text.Trim();
-                var rows = SelectedDownloads();
-                if (name.Length == 0) { C<TextBlock>("SearchSetStatus").Text = "Введите название нового набора или выберите существующий."; C<ComboBox>("SearchSet").Focus(); return; }
-                if (rows.Count == 0) { C<TextBlock>("SearchSetStatus").Text = "Добавьте приложения в выбранное."; return; }
-                try
-                {
-                    engine.AppSets.AddApps(name, rows.Select(x => new AppRow { ID = x.ID, Name = x.Name }));
-                    view.RefreshAppSets();
-                    C<ComboBox>("SearchSet").Text = name;
-                    C<TextBlock>("SearchSetStatus").Text = "В набор «" + name + "» добавлено: " + rows.Count + ". Повторы пропущены.";
-                    view.RegisterPrivate(name);
-                }
-                catch (Exception e) { C<TextBlock>("SearchSetStatus").Text = e.Message; Log("Наборы: " + e.Message); }
-            });
-            RefreshSets();
+
         }
+        /// <summary>Возвращает текущий выбор, а при пустой очереди — независимый снимок последнего пакета.</summary>
         internal List<DownloadItem> SelectedDownloads()
         {
             return chosen.Count > 0 ? chosen.Snapshot() : lastDownloads.Select(x => new DownloadItem { ID = x.ID, Name = x.Name, VersionID = x.VersionID }).ToList();
         }
-        internal void RefreshSets()
+        /// <summary>Дополняет очередь ID из наборов и сохраняет уже выбранные версии приложений.</summary>
+        internal int AddSetApps(IEnumerable<AppRow> apps)
         {
-            var combo = C<ComboBox>("SearchSet");
-            var name = combo.Text;
-            try { combo.ItemsSource = engine.AppSets.Load().Select(x => x.Name).ToArray(); combo.Text = name; }
-            catch (Exception e) { C<TextBlock>("SearchSetStatus").Text = e.Message; }
-        }
-        internal void AddSetApps(IEnumerable<AppRow> apps)
-        {
-            foreach (var app in apps) chosen.Add(app, null);
+            int added = chosen.AddMissing(apps);
             RefreshChosen();
             C<TabItem>("SearchTab").IsSelected = true;
+            return added;
         }
+        /// <summary>Запускает пакет и обновляет отдельные списки успешных и неудачных запросов.</summary>
         void StartDownloads(List<DownloadItem> rows, bool remember = true)
         {
             if (rows.Count == 0) throw new Exception("Добавьте приложения в выбранное.");
             if (remember) lastDownloads = rows.Select(x => new DownloadItem { ID = x.ID, Name = x.Name, VersionID = x.VersionID }).ToList();
             Work("Скачивание IPA…", async delegate(CancellationToken ct)
             {
-                int index = 0, success = 0;
-                var failures = new List<string>();
-                foreach (var row in rows)
-                {
-                    ct.ThrowIfCancellationRequested();
-                    view.BeginQueue("Скачивание", ++index, rows.Count, row.Name);
-                    Log("В очереди: " + row.Label);
-                    try
+                var result = await BatchRunner.Run(rows,
+                    (row, token) => engine.ApplicationDownloads.DownloadAsync(row, token),
+                    (row, index) => { view.BeginQueue("Скачивание", index, rows.Count, row.Name); Log("В очереди: " + row.Label); },
+                    row =>
                     {
-                        await engine.ApplicationDownloads.DownloadAsync(row, ct);
                         var current = chosen.Snapshot().FirstOrDefault(x => x.ID == row.ID);
+                        // Повтор старой версии не снимает новую версию, отдельно выбранную пользователем.
                         if (current != null && current.VersionID == row.VersionID) chosen.Remove(row.ID);
-                        failedDownloads.Remove(row.ID); success++;
+                        failedDownloads.Remove(row.ID);
                         RefreshChosen();
-                    }
-                    catch (OperationCanceledException) { throw; }
-                    catch (Exception e)
+                    },
+                    (row, error) =>
                     {
                         failedDownloads.Add(new AppRow { ID = row.ID, Name = row.Name }, row.VersionID);
-                        failures.Add(row.Name);
-                        Log("Не удалось скачать " + row.Name + ": " + e.Message);
-                    }
-                    RefreshLocalFiles();
-                }
-                view.CompleteQueue(success, failures.Count);
-                if (failures.Count > 0) throw new Exception("Не удалось скачать: " + String.Join(", ", failures) + ". Кнопка «Повторить ошибки» повторит только эти приложения.");
+                        Log("Не удалось скачать " + row.Name + ": " + error.Message);
+                    }, RefreshLocalFiles, ct);
+                view.CompleteQueue(result.Succeeded, result.Failed.Count);
+                if (result.Failed.Count > 0) throw new Exception("Не удалось скачать: " + String.Join(", ", result.Failed.Select(x => x.Name)) + ". Кнопка «Повторить ошибки» повторит только эти приложения.");
             });
         }
+        /// <summary>Пересчитывает доступность действий по состоянию выбора и выполняемой операции.</summary>
         public override void RefreshActions()
         {
-            C<Button>("AddToSet").IsEnabled = !busy && SelectedDownloads().Count > 0;
-            C<ComboBox>("SearchSet").IsEnabled = !busy;
             C<Button>("RetryDownloads").IsEnabled = !busy && failedDownloads.Count > 0;
             C<Button>("RetryDownloads").Content = "Повторить ошибки (" + failedDownloads.Count + ")";
             C<Button>("RetryDownloads").ToolTip = String.Join(Environment.NewLine, failedDownloads.Snapshot().Select(x => x.Label));

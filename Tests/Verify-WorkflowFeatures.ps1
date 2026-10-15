@@ -65,6 +65,40 @@ try{
  Assert ([IpaDesktop.IpaMetadata]::ReadDetails($integer).AppStoreID -eq '6739530834') 'Binary integer itemId was lost or truncated to 32 bits'
  $engine.AppSets.Delete('Base');Assert ($engine.AppSets.Load().Count -eq 1 -and [IO.File]::Exists($other)) 'Deleting a set removed IPA files'
  Write-Host 'PASS: account-independent ID sets, metadata IDs, legacy conversion, missing files, path bounds, XML/binary integers and account-isolated storage'
+ # Batch legacy conversion is all-or-nothing, even when the second set is invalid.
+ $legacy.Files=@('other-account.ipa')
+ $invalid=New-Object IpaDesktop.AppSet;$invalid.Name='Missing legacy';$invalid.Files=@('missing.ipa')
+ $before=[IO.File]::ReadAllText((Join-Path $temp 'AppSets.json'));$rejected=$false
+ try{$engine.AppSets.ResolveMany([IpaDesktop.AppSet[]]@($legacy,$invalid))|Out-Null}catch{$rejected=$true}
+ Assert ($rejected -and [IO.File]::ReadAllText((Join-Path $temp 'AppSets.json')) -eq $before) 'Failed batch migration changed saved sets'
+ $locked=Join-Path $temp 'atomic.json';[IO.File]::WriteAllText($locked,'original')
+ $handle=[IO.File]::Open($locked,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read);$rejected=$false
+ try{try{[IpaDesktop.AtomicFile]::WriteUtf8($locked,'replacement')}catch{$rejected=$true}}finally{$handle.Dispose()}
+ Assert ($rejected -and [IO.File]::ReadAllText($locked) -eq 'original' -and @(Get-ChildItem $temp -Filter 'atomic.json.*.tmp').Count -eq 0) 'Atomic save failure damaged original or retained temp file'
+ Add-Type -ReferencedAssemblies (Join-Path $projectRoot 'IPA-Desktop.exe') -TypeDefinition @'
+using System;
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
+using IpaDesktop;
+public static class BatchContractCheck {
+ public static void Verify() {
+  int started=0, completed=0, failed=0;
+  var result=BatchRunner.Run(new List<int>{1,2,3}, (item,ct)=>{if(item==2)throw new InvalidOperationException("fixture");return Task.FromResult(0);},
+   (item,index)=>{started++;}, item=>{completed++;}, (item,error)=>{failed++;}, null, CancellationToken.None).GetAwaiter().GetResult();
+  if(started!=3 || completed!=2 || failed!=1 || result.Succeeded!=2 || result.Failed.Count!=1 || result.Failed[0]!=2)throw new Exception("Batch did not continue after item failure");
+  using(var cancel=new CancellationTokenSource()){
+   started=0;failed=0;bool canceled=false;
+   try{BatchRunner.Run(new List<int>{1,2,3}, (item,ct)=>{cancel.Cancel();return Task.FromResult(0);},
+    (item,index)=>{started++;}, item=>{}, (item,error)=>{failed++;}, null, cancel.Token).GetAwaiter().GetResult();}
+   catch(OperationCanceledException){canceled=true;}
+   if(!canceled || started!=1 || failed!=0)throw new Exception("Cancellation started pending items or counted failures");
+  }
+ }
+}
+'@
+ [BatchContractCheck]::Verify()
+ Write-Host 'PASS: atomic write failure, all-or-nothing set migration, batch error continuation and cancellation'
  $progress=New-Object IpaDesktop.QueueProgress
  $progress.Begin('Скачивание',2,3,'Example')
  Assert ($progress.Feed('PROGRESS:50')) 'Machine-readable progress was ignored'

@@ -1,5 +1,6 @@
 namespace IpaDesktop
 {
+    /// <summary>Результат проверки драйверов Apple и сведения для объяснения пользователю.</summary>
     public enum AppleSupportStatus
     {
         Running,
@@ -9,6 +10,7 @@ namespace IpaDesktop
         Unknown
     }
 
+    /// <summary>Результат проверки драйверов Apple и сведения для объяснения пользователю.</summary>
     public sealed class AppleSupportSnapshot
     {
         public bool InstallationDetected { get; set; }
@@ -20,6 +22,7 @@ namespace IpaDesktop
         public string Details { get; set; }
     }
 
+    /// <summary>Результат проверки драйверов Apple и сведения для объяснения пользователю.</summary>
     public sealed class AppleSupportReport
     {
         public AppleSupportStatus Status { get; set; }

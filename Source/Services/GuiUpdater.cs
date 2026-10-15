@@ -13,9 +13,10 @@ using System.Diagnostics;
 
 namespace IpaDesktop
 {
+    /// <summary>Проверяет источник, размер и SHA-256 GUI-сборки; готовит обновление с восстановлением при ошибке.</summary>
     public static class GuiUpdater
     {
-        public const string CurrentVersion = "0.1.19";
+        public const string CurrentVersion = AppInfo.Version;
         public static readonly string[] PackageFiles =
         {
             "IPA-Desktop.exe",
@@ -44,6 +45,7 @@ namespace IpaDesktop
             "Tests/Verify-Layout.ps1",
             "Tests/Fixtures/Legacy-Update-App.ps1"
         };
+        /// <summary>Разбирает числовой тег версии для корректного сравнения обновлений.</summary>
         public static Version ParseVersion(string tag)
         {
             Version v;
@@ -65,7 +67,7 @@ namespace IpaDesktop
             using (var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct))
             {
                 timeout.CancelAfter(TimeSpan.FromSeconds(15));
-                using (var h = Client()) using (var response = await h.GetAsync("https://api.github.com/repos/iamdarkls/IPA-Desktop/releases/latest", timeout.Token))
+                using (var h = Client()) using (var response = await h.GetAsync("https://api.github.com/repos/" + AppInfo.Repository + "/releases/latest", timeout.Token))
                 {
                     response.EnsureSuccessStatusCode();
                     var r = JsonCodec.Deserialize<Release> (await response.Content.ReadAsStringAsync());
@@ -73,16 +75,18 @@ namespace IpaDesktop
                 }
             }
         }
+        /// <summary>Выбирает единственный ожидаемый Windows-архив и проверяет его источник.</summary>
         public static Asset SelectAsset(Release release)
         {
             var version = ParseVersion(release.tag_name).ToString();
             var matches = (release.assets ?? new Asset[0]).Where(a => a.name == "IPA-Desktop-" + version + "-Windows.zip").ToArray();
             if (matches.Length != 1) throw new InvalidDataException("В релизе нет единственного ZIP для Windows.");
             var asset = matches[0];
-            string expected = "https://github.com/iamdarkls/IPA-Desktop/releases/download/" + release.tag_name + "/" + asset.name;
+            string expected = AppInfo.ReleasesUrl + "/download/" + release.tag_name + "/" + asset.name;
             if (asset.browser_download_url != expected || asset.size <= 0 || asset.size > 64 * 1024 * 1024 || asset.digest == null || !System.Text.RegularExpressions.Regex.IsMatch(asset.digest, "^sha256:[0-9a-fA-F]{64}$")) throw new InvalidDataException("Не удалось проверить источник, размер или SHA-256 обновления.");
             return asset;
         }
+        /// <summary>Извлекает только проверенные файлы манифеста с ограничением размера и проверкой структуры.</summary>
         public static void Extract(string zip, string stage)
         {
             using (var archive = ZipFile.OpenRead(zip))
@@ -106,6 +110,7 @@ namespace IpaDesktop
                 }
             }
         }
+        /// <summary>Загружает и проверяет обновление перед запуском внешнего установочного скрипта.</summary>
         public static async Task<string> Prepare(Release release, CancellationToken ct, Action<double> progress)
         {
             var asset = SelectAsset(release);
@@ -165,10 +170,12 @@ namespace IpaDesktop
                 throw;
             }
         }
+        /// <summary>Экранирует строковый аргумент PowerShell без интерполяции пользовательского содержимого.</summary>
         static string QuotePS(string value)
         {
             return "'" + value.Replace("'", "''") + "'";
         }
+        /// <summary>Запускает обновляющий скрипт, который дождётся закрытия приложения и заменит файлы.</summary>
         public static void Launch(string stage)
         {
             string target = AppDomain.CurrentDomain.BaseDirectory;

@@ -14,6 +14,7 @@ using System.Web.Script.Serialization;
 
 namespace IpaDesktop
 {
+    /// <summary>Ограниченный буфер сообщений между фоновыми процессами и таймером интерфейса.</summary>
     public class BufferedJournal
     {
         readonly Queue<string> pending = new Queue<string> ();
@@ -33,6 +34,7 @@ namespace IpaDesktop
                 pending.Enqueue(line);
             }
         }
+        /// <summary>Извлекает накопленные сообщения для пакетного обновления интерфейса.</summary>
         public string Drain()
         {
             lock (gate)

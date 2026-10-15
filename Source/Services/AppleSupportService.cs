@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 
 namespace IpaDesktop
 {
+    /// <summary>Преобразует снимок служб и реестра в понятный статус готовности компонентов Apple.</summary>
     public sealed class AppleSupportService
     {
         readonly IAppleSupportProbe probe;
@@ -14,6 +15,7 @@ namespace IpaDesktop
             this.probe = probe;
         }
 
+        /// <summary>Выполняет чтение системного состояния вне UI-потока и возвращает оценку компонентов Apple.</summary>
         public Task<AppleSupportReport> CheckAsync(CancellationToken cancellation)
         {
             return Task.Run(delegate
@@ -25,6 +27,7 @@ namespace IpaDesktop
             }, cancellation);
         }
 
+        /// <summary>Различает отсутствие драйверов, остановленную службу и невозможность достоверной проверки.</summary>
         public static AppleSupportReport Evaluate(AppleSupportSnapshot snapshot)
         {
             if (snapshot == null) throw new ArgumentNullException("snapshot");

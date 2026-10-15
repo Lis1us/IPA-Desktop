@@ -1,6 +1,7 @@
 using System;
 namespace IpaDesktop
 {
+    /// <summary>Сохранённый набор ID; Files используется только для чтения и миграции прежнего формата.</summary>
     public sealed class AppSet
     {
         public string Name { get; set; }

@@ -9,9 +9,11 @@ using System.Collections.Generic;
 namespace IpaDesktop
 {
     // Reads account identity from the IPA itself; never substitutes the current session.
+    /// <summary>Читает ограниченные XML и binary plist из IPA; никогда не подставляет текущий Apple Account.</summary>
     public static class IpaMetadata
     {
         const int Limit = 1024 * 1024;
+        /// <summary>Читает Apple Account из корневых метаданных IPA; возвращает понятный статус при отсутствии данных.</summary>
         public static string ReadAccount(string path)
         {
             try
@@ -53,6 +55,7 @@ namespace IpaDesktop
                 return "Не удалось прочитать";
             }
         }
+        /// <summary>Ограничивает объём чтения метаданных до выделения и заполнения буфера.</summary>
         static byte[] EntryBytes(ZipArchiveEntry entry)
         {
             if (entry == null) return null;
@@ -100,6 +103,7 @@ namespace IpaDesktop
             if (String.IsNullOrWhiteSpace(text) || text.Length > 320 || text.Any(Char.IsControl)) return null;
             return text.Trim();
         }
+        /// <summary>Читает корневые метаданные и Info.plist основного приложения; расширения и Watch-приложения исключены.</summary>
         public static IpaDetails ReadDetails(string path)
         {
             var details = new IpaDetails { Account = ReadAccount(path) };
@@ -130,6 +134,7 @@ namespace IpaDesktop
             }
             return details;
         }
+        /// <summary>Распознаёт только поле appleId, не принимая название приложения за аккаунт.</summary>
         static bool IsAccountKey(string key)
         {
             return String.Equals(key, "appleId", StringComparison.OrdinalIgnoreCase);
@@ -142,6 +147,7 @@ namespace IpaDesktop
             foreach (char c in value) if (Char.IsControl(c)) return "Не удалось прочитать";
             return value;
         }
+        /// <summary>Разбирает XML или binary plist с ограничением размера и отключённым внешним XML-резолвером.</summary>
         public static string ParseAccount(byte[] bytes)
         {
             if (bytes.Length > Limit) throw new InvalidDataException();

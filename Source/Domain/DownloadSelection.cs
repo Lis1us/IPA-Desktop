@@ -4,6 +4,7 @@ using System.Linq;
 
 namespace IpaDesktop
 {
+    /// <summary>Очередь загрузок, уникальная по App Store ID; снимки отделены от внутреннего состояния.</summary>
     public class DownloadSelection
     {
         readonly List<DownloadItem> items = new List<DownloadItem>();
@@ -29,6 +30,19 @@ namespace IpaDesktop
                 existing.VersionID = version;
             }
         }
+        /// <summary>Дополняет очередь набором, сохраняя уже выбранную пользователем версию приложения.</summary>
+        public int AddMissing(IEnumerable<AppRow> apps)
+        {
+            var incoming = AppSetRules.UniqueApps(apps);
+            int added = 0;
+            foreach (var app in incoming)
+            {
+                if (items.Any(x => x.ID == app.ID)) continue;
+                Add(app, null); added++;
+            }
+            return added;
+        }
+        /// <summary>Возвращает копии элементов, чтобы текущая операция не зависела от дальнейших изменений выбора.</summary>
         public List<DownloadItem> Snapshot()
         {
             return items.Select(x => new DownloadItem

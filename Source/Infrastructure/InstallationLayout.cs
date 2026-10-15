@@ -5,6 +5,7 @@ using System.Linq;
 
 namespace IpaDesktop
 {
+    /// <summary>Восстанавливает вложенные файлы из ресурсов и переносит старую структуру portable-сборки.</summary>
     public static class InstallationLayout
     {
         static readonly Dictionary<string, string> LegacyFiles = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
@@ -26,6 +27,7 @@ namespace IpaDesktop
             { "Tests/Verify-Services.ps1", "Verify-Services.ps1" }
         };
 
+        /// <summary>Восстанавливает отсутствующие файлы и удаляет только неизменённые устаревшие копии.</summary>
         public static void Ensure(string installationDirectory)
         {
             string root = Path.GetFullPath(installationDirectory);

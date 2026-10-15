@@ -14,13 +14,15 @@ using System.Web.Script.Serialization;
 
 namespace IpaDesktop
 {
+    /// <summary>Проверяет, устанавливает и откатывает ipatool и отдельный комплект libimobiledevice.</summary>
     public sealed class EngineUpdater
     {
         public const string SourceRepository = "Sorvigolova/ipatool";
-        public const string DeviceRepository = "iamdarkls/IPA-Desktop";
+        public const string DeviceRepository = AppInfo.Repository;
         public const string DeviceTagPrefix = "device-tools-v";
         public const string WindowsAssetName = "windows_amd64_ipatool-cpp.zip";
         static readonly string[] DeviceFiles = { "idevice_id.exe", "ideviceinfo.exe", "ideviceinstaller.exe", "libimobiledevice-1.0.dll", "libplist-2.0.dll" };
+        /// <summary>Выбирает единственный ожидаемый Windows-архив и проверяет его источник.</summary>
         public static Asset SelectAsset(Release release)
         {
             var matches = (release.assets ?? new Asset[0]).Where(a => a.name == WindowsAssetName).ToArray();
@@ -28,11 +30,13 @@ namespace IpaDesktop
             ValidateAsset(matches[0], SourceRepository);
             return matches[0];
         }
+        /// <summary>Проверяет допустимый репозиторий и параметры архива перед загрузкой.</summary>
         static void ValidateAsset(Asset asset, string repository)
         {
             if (asset.browser_download_url == null || !asset.browser_download_url.StartsWith("https://github.com/" + repository + "/releases/download/", StringComparison.Ordinal)) throw new IOException("Неожиданный источник архива.");
             if (asset.size <= 0 || asset.size > 1000000000) throw new IOException("Некорректный размер архива.");
         }
+        /// <summary>Выбирает архив инструментов устройства из релиза с допустимым тегом и источником.</summary>
         public static Asset SelectDeviceAsset(Release release)
         {
             if (release.tag_name == null || !System.Text.RegularExpressions.Regex.IsMatch(release.tag_name, @"^device-tools-v\d+\.\d+\.\d+$")) throw new IOException("Некорректный релиз нашего комплекта для iPhone.");
@@ -44,11 +48,13 @@ namespace IpaDesktop
             if (matches[0].digest == null || !System.Text.RegularExpressions.Regex.IsMatch(matches[0].digest, @"^sha256:[0-9a-fA-F]{64}$")) throw new IOException("Для комплекта требуется SHA-256 от GitHub.");
             return matches[0];
         }
+        /// <summary>Проверяет наличие обязательных EXE и DLL в указанном комплекте.</summary>
         public static bool HasDeviceTools(string root)
         {
             if (!Directory.Exists(root)) return false;
             return new[] { "idevice_id.exe", "ideviceinfo.exe", "ideviceinstaller.exe", "libimobiledevice-1.0*.dll", "libplist-2.0*.dll" }.All(file => Directory.GetFiles(root, file, SearchOption.AllDirectories).Count(x => x.Replace('\\', '/').Contains("/windows_amd64/")) == 1);
         }
+        /// <summary>Отклоняет неполный комплект инструментов установки до переключения настроек.</summary>
         public static void CheckDevicePackage(string root)
         {
             if (!HasDeviceTools(root) || !Directory.Exists(Path.Combine(root, "LICENSES")) || !File.Exists(Path.Combine(root, "sources.json"))) throw new IOException("Неполный комплект: нужны утилиты, DLL, лицензии и исходные ревизии.");
@@ -116,6 +122,7 @@ namespace IpaDesktop
                 return JsonCodec.Deserialize<Release> (await response.Content.ReadAsStringAsync());
             }
         }
+        /// <summary>Распаковывает архив с проверкой выходных путей, исключая запись за пределами целевой папки.</summary>
         public static void Extract(string zip, string dest)
         {
             Directory.CreateDirectory(dest);
@@ -137,6 +144,7 @@ namespace IpaDesktop
                 }
             }
         }
+        /// <summary>Проверяет новую версию в отдельной папке и меняет настройки только после успешной установки.</summary>
         public async Task Install(Release rel, CancellationToken ct)
         {
             var asset = SelectAsset(rel);
@@ -219,6 +227,7 @@ namespace IpaDesktop
                 if (!committed && Directory.Exists(supportStage)) Directory.Delete(supportStage, true);
             }
         }
+        /// <summary>Скачивает архив с контролем размера, SHA-256 и отменой запроса.</summary>
         async Task Download(Asset asset, string zip, CancellationToken ct)
         {
             using (var response = await Http.GetAsync(asset.browser_download_url, HttpCompletionOption.ResponseHeadersRead, ct))
@@ -249,6 +258,7 @@ namespace IpaDesktop
                 }
             } else Log("GitHub не предоставил SHA-256; проверены HTTPS-источник и размер архива.");
         }
+        /// <summary>Получает опубликованные релизы комплекта устройства независимо от последнего GUI-релиза.</summary>
         public async Task<Release> CheckDeviceTools(CancellationToken ct)
         {
             using (var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct))
@@ -269,12 +279,14 @@ namespace IpaDesktop
                 throw new IOException("Наш опубликованный Windows-комплект для iPhone пока не найден.");
             }
         }
+        /// <summary>Сопоставляет источник, тег и наличие бинарников, а не только номер версии.</summary>
         public bool DeviceToolsCurrent(Release release)
         {
             var current = Settings.DeviceCurrent ?? Settings.Current;
             var version = Settings.DeviceVersion ?? (Settings.Source == null ? Settings.Version : null);
             return Settings.DeviceSource == DeviceRepository && !String.IsNullOrEmpty(current) && release.tag_name == version && HasDeviceTools(new ToolLocator(store).VersionRoot(current));
         }
+        /// <summary>Проверяет запуск обязательных утилит до активации установленного комплекта.</summary>
         async Task ValidateDeviceTools(string root, CancellationToken ct)
         {
             if (!HasDeviceTools(root)) throw new IOException("Неполный комплект инструментов для iPhone.");
@@ -290,6 +302,7 @@ namespace IpaDesktop
                 }
             }
         }
+        /// <summary>Устанавливает комплект в новую папку, проверяет CLI и сохраняет настройки после успеха.</summary>
         public async Task InstallDeviceTools(Release release, CancellationToken ct)
         {
             var asset = SelectDeviceAsset(release);
@@ -326,6 +339,7 @@ namespace IpaDesktop
                 if (!committed && Directory.Exists(stage)) Directory.Delete(stage, true);
             }
         }
+        /// <summary>Меняет местами текущий и предыдущий комплект устройства, сохраняя состояние ipatool.</summary>
         public void RollbackDeviceTools()
         {
             var old = Settings;
@@ -342,6 +356,7 @@ namespace IpaDesktop
             catch { Settings = old; throw; }
             Log("Комплект для iPhone восстановлен. Его автообновление отключено.");
         }
+        /// <summary>Возвращает предыдущую версию движка и сохраняет независимые пользовательские настройки.</summary>
         public void Rollback()
         {
             if (String.IsNullOrEmpty(Settings.Previous) || !Directory.Exists(Path.Combine(Root, "Versions", Settings.Previous))) throw new Exception("Предыдущей версии пока нет.");

@@ -5,9 +5,11 @@ using System.Windows.Interop;
 
 namespace IpaDesktop
 {
+    /// <summary>Применяет оформление заголовка Windows через DWM, учитывая доступность API системы.</summary>
     public static class WindowTheme
     {
         [DllImport("dwmapi.dll")] static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int value, int size);
+        /// <summary>Устанавливает тёмный заголовок и цвета рамки, если версия Windows поддерживает нужные атрибуты.</summary>
         public static void Apply(Window window)
         {
             if (SystemParameters.HighContrast) return;

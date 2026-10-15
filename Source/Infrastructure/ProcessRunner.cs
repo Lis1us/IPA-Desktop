@@ -14,6 +14,7 @@ using System.Web.Script.Serialization;
 
 namespace IpaDesktop
 {
+    /// <summary>Запускает CLI вне UI-потока, ограничивает вывод и обеспечивает прерываемое ожидание процесса.</summary>
     public sealed class ProcessRunner : IProcessRunner
     {
         readonly string Downloads;
@@ -35,6 +36,7 @@ namespace IpaDesktop
             };
         }
         // Windows CommandLineToArgvW-compatible quoting; never invoke cmd.exe.
+        /// <summary>Экранирует один аргумент по правилам Windows, включая кавычки и завершающие обратные слеши.</summary>
         public static string Quote(string s)
         {
             var b = new StringBuilder("\"");
@@ -60,6 +62,7 @@ namespace IpaDesktop
             b.Append('\\', n * 2);
             return b.Append('"').ToString();
         }
+        /// <summary>Запускает процесс в фоне; отмена завершает дочерний процесс, а ожидание и чтение вывода ограничены.</summary>
         public Task<Result> Run(string exe, string[] args, CancellationToken token, bool visible, bool publish)
         {
             return Task.Run(delegate

@@ -13,8 +13,10 @@ using Microsoft.Win32;
 
 namespace IpaDesktop
 {
+    /// <summary>Обрабатывает крестики в шаблонах выбранных элементов по стабильному ID или пути.</summary>
     public static class SelectionRemove
     {
+        /// <summary>Находит крестик во вложенном WPF-шаблоне и передаёт идентификатор удаляемого элемента.</summary>
         public static void Attach(ItemsControl list, Action<string> remove)
         {
             list.AddHandler(Button.ClickEvent, new RoutedEventHandler(delegate(object sender, RoutedEventArgs e)

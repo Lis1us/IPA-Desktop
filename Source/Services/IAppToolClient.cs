@@ -14,8 +14,10 @@ using System.Web.Script.Serialization;
 
 namespace IpaDesktop
 {
+    /// <summary>Подменяемый контракт команд ipatool; тесты выполняются без Apple Account и сетевого входа.</summary>
     public interface IAppToolClient
     {
+        /// <summary>Добавляет параметры протокола CLI и выполняет команду через подменяемый процессный адаптер.</summary>
         Task<Result> RunAsync(string[] arguments, CancellationToken cancellation, bool publish);
     }
 }

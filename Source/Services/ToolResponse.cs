@@ -14,6 +14,7 @@ using System.Web.Script.Serialization;
 
 namespace IpaDesktop
 {
+    /// <summary>Разбирает ответы CLI и каталоги, проверяет ошибки и объединяет приложения по ID.</summary>
     public static class ToolResponse
     {
         public static void Ensure(Result r)
@@ -45,12 +46,14 @@ namespace IpaDesktop
         {
             return d.Where(k => String.Equals(k.Key, key, StringComparison.OrdinalIgnoreCase)).Select(k => k.Value).FirstOrDefault();
         }
+        /// <summary>Извлекает доступные идентификаторы версий без подстановки неподтверждённых значений.</summary>
         public static List<string> VersionIds(string text)
         {
             var values = Get(Object(text), "externalVersionIdentifiers") as object[];
             if (values == null) throw new Exception("Формат списка версий не поддерживается.");
             return values.Select(Convert.ToString).Where(x => x.Length > 0 && x.All(Char.IsDigit)).ToList();
         }
+        /// <summary>Извлекает приложения из JSON-вывода ipatool.</summary>
         public static List<AppRow> ParseApps(string text)
         {
             var d = Object(text);
@@ -61,6 +64,7 @@ namespace IpaDesktop
                 Name = Convert.ToString(Get(x, "name")), ID = Convert.ToString(Get(x, "id"))
             }).Where(x => x.ID.All(Char.IsDigit) && x.ID.Length > 0).ToList();
         }
+        /// <summary>Разбирает строки каталога и отбрасывает некорректные записи.</summary>
         public static List<AppRow> ParseCatalog(string text)
         {
             var rows = new List<AppRow>();
@@ -75,11 +79,13 @@ namespace IpaDesktop
             }
             return rows.GroupBy(x => x.ID).Select(x => x.First()).ToList();
         }
+        /// <summary>Фильтрует объединённые каталоги по пользовательскому запросу.</summary>
         public static List<AppRow> MatchCatalog(string query, List<AppRow> custom, List<AppRow> catalog)
         {
             var ids = new HashSet<string>(custom.Select(x => x.ID));
             return custom.Concat(catalog.Where(x => !ids.Contains(x.ID))).Where(x => x.Name.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0).GroupBy(x => x.ID).Select(x => x.First()).ToList();
         }
+        /// <summary>Объединяет источники по App Store ID, исключая повторяющиеся приложения.</summary>
         public static List<AppRow> MergeApps(IEnumerable<AppRow> local, IEnumerable<AppRow> online)
         {
             return local.Concat(online).GroupBy(x => x.ID).Select(x => x.First()).ToList();

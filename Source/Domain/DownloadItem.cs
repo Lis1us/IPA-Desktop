@@ -1,5 +1,6 @@
 namespace IpaDesktop
 {
+    /// <summary>Снимок запроса загрузки с необязательным ID версии; null означает последнюю доступную.</summary>
     public class DownloadItem
     {
         public string Name

@@ -13,6 +13,7 @@ using Microsoft.Win32;
 
 namespace IpaDesktop
 {
+    /// <summary>Управляет входом, проверкой и выходом из Apple Account, синхронизируя доступность кнопок.</summary>
     public sealed class AccountController : WindowController
     {
         bool signedIn;
@@ -48,11 +49,13 @@ namespace IpaDesktop
                 });
             });
         }
+        /// <summary>Пересчитывает доступность действий по состоянию выбора и выполняемой операции.</summary>
         public override void RefreshActions()
         {
             C<Button>("Login").IsEnabled = !busy && !signedIn;
             C<Button>("Logout").IsEnabled = !busy && signedIn;
         }
+        /// <summary>Запрашивает актуальный auth info и обновляет состояние входа только по успешному ответу.</summary>
         public async Task Account(CancellationToken ct)
         {
             var r = await engine.Tool(new[]

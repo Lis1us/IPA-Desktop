@@ -14,6 +14,7 @@ using System.Web.Script.Serialization;
 
 namespace IpaDesktop
 {
+    /// <summary>Фасад и точка сборки сервисов; сохраняет совместимый API для portable-сборок и проверок.</summary>
     public sealed class Engine
     {
         readonly SettingsStore settings;
@@ -151,15 +152,21 @@ namespace IpaDesktop
         {
             return updater.Install(release, ct);
         }
+        /// <summary>Получает опубликованные релизы комплекта устройства независимо от последнего GUI-релиза.</summary>
         public Task<Release> CheckDeviceTools(CancellationToken ct) { return updater.CheckDeviceTools(ct); }
+        /// <summary>Сопоставляет источник, тег и наличие бинарников, а не только номер версии.</summary>
         public bool DeviceToolsCurrent(Release release) { return updater.DeviceToolsCurrent(release); }
+        /// <summary>Устанавливает комплект в новую папку, проверяет CLI и сохраняет настройки после успеха.</summary>
         public Task InstallDeviceTools(Release release, CancellationToken ct) { return updater.InstallDeviceTools(release, ct); }
+        /// <summary>Меняет местами текущий и предыдущий комплект устройства, сохраняя состояние ipatool.</summary>
         public void RollbackDeviceTools() { updater.RollbackDeviceTools(); }
+        /// <summary>Возвращает предыдущую версию движка и сохраняет независимые пользовательские настройки.</summary>
         public void Rollback()
         {
             updater.Rollback();
         }
         // Compatibility API for portable builds and existing verification scripts.
+        /// <summary>Экранирует один аргумент по правилам Windows, включая кавычки и завершающие обратные слеши.</summary>
         public static string Quote(string text)
         {
             return ProcessRunner.Quote(text);
@@ -176,22 +183,27 @@ namespace IpaDesktop
         {
             return ToolResponse.Get(data, key);
         }
+        /// <summary>Извлекает доступные идентификаторы версий без подстановки неподтверждённых значений.</summary>
         public static List<string> VersionIds(string output)
         {
             return ToolResponse.VersionIds(output);
         }
+        /// <summary>Извлекает приложения из JSON-вывода ipatool.</summary>
         public static List<AppRow> ParseApps(string output)
         {
             return ToolResponse.ParseApps(output);
         }
+        /// <summary>Разбирает строки каталога и отбрасывает некорректные записи.</summary>
         public static List<AppRow> ParseCatalog(string text)
         {
             return ToolResponse.ParseCatalog(text);
         }
+        /// <summary>Фильтрует объединённые каталоги по пользовательскому запросу.</summary>
         public static List<AppRow> MatchCatalog(string query, List<AppRow> custom, List<AppRow> catalog)
         {
             return ToolResponse.MatchCatalog(query, custom, catalog);
         }
+        /// <summary>Объединяет источники по App Store ID, исключая повторяющиеся приложения.</summary>
         public static List<AppRow> MergeApps(IEnumerable<AppRow> local, IEnumerable<AppRow> online)
         {
             return ToolResponse.MergeApps(local, online);

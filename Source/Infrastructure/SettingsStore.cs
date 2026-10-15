@@ -14,6 +14,7 @@ using System.Web.Script.Serialization;
 
 namespace IpaDesktop
 {
+    /// <summary>Загружает state.json и сохраняет его атомарно; используется сервисами установки и отката.</summary>
     public sealed class SettingsStore
     {
         public string Root
@@ -34,13 +35,10 @@ namespace IpaDesktop
             Settings = File.Exists(path) ? JsonCodec.Deserialize<State> (File.ReadAllText(path)) : new State();
             if (Settings == null) throw new IOException("Не удалось прочитать настройки.");
         }
+        /// <summary>Атомарно сохраняет текущие настройки без частичного изменения существующего файла.</summary>
         public void Save()
         {
-            var f = Path.Combine(Root, "state.json");
-            var t = f + ".tmp";
-            File.WriteAllText(t, JsonCodec.Serialize(Settings), Encoding.UTF8);
-            if (File.Exists(f)) File.Replace(t, f, null);
-            else File.Move(t, f);
+            AtomicFile.WriteUtf8(Path.Combine(Root, "state.json"), JsonCodec.Serialize(Settings));
         }
     }
 }

@@ -14,6 +14,7 @@ using System.Web.Script.Serialization;
 
 namespace IpaDesktop
 {
+    /// <summary>Ищет по кэшируемому каталогу IPA_Downloader; при сетевой ошибке использует локальную копию.</summary>
     public sealed class AppCatalog
     {
         readonly SettingsStore store;
@@ -46,6 +47,7 @@ namespace IpaDesktop
             {
             };
         }
+        /// <summary>Ищет по каталогам асинхронно и учитывает токен отмены.</summary>
         public async Task<List<AppRow>> SearchAsync(string query, CancellationToken ct)
         {
             var folder = Path.Combine(Root, "Files");

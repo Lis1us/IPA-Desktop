@@ -116,6 +116,15 @@ try {
  $tabs.SelectedIndex=4;$window.Dispatcher.Invoke([Action]{},[Windows.Threading.DispatcherPriority]::ApplicationIdle);$window.UpdateLayout()
  $window.FindName('StorageFiles').ItemsSource=$localRows
  $window.FindName('SetName').Text='Base set'
+ $setA=New-Object IpaDesktop.AppSet;$setA.Name='Базовый набор'
+ $setB=New-Object IpaDesktop.AppSet;$setB.Name='Общение'
+ $presetApp=New-Object IpaDesktop.AppRow;$presetApp.Name='Telegram';$presetApp.ID='686449807'
+ $setA.Apps=[IpaDesktop.AppRow[]]@($presetApp);$setB.Apps=[IpaDesktop.AppRow[]]@($presetApp)
+ $window.FindName('AppSets').ItemsSource=[IpaDesktop.AppSet[]]@($setA,$setB)
+ $window.FindName('AppSets').SelectedItems.Add($setA)|Out-Null;$window.FindName('AppSets').SelectedItems.Add($setB)|Out-Null
+ $window.FindName('SetsCount').Text='Сохранено наборов: 2'
+ $window.FindName('SetPreview').Text='Выбрано наборов: 2 · уникальных приложений: 1'
+
  $window.FindName('StorageSummary').Text='IPA: 2 | Storage: 200 MB | Older versions: 1'
  $window.Dispatcher.Invoke([Action]{},[Windows.Threading.DispatcherPriority]::ApplicationIdle);$window.UpdateLayout()
  $bitmap=New-Object Windows.Media.Imaging.RenderTargetBitmap([int]$visual.ActualWidth,[int]$visual.ActualHeight,96,96,[Windows.Media.PixelFormats]::Pbgra32)

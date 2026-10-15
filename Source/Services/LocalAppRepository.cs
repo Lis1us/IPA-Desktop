@@ -14,6 +14,7 @@ using System.Web.Script.Serialization;
 
 namespace IpaDesktop
 {
+    /// <summary>Импорт, просмотр и удаление локальных IPA с проверкой путей и кэшем метаданных.</summary>
     public sealed class LocalAppRepository
     {
         readonly string folder;
@@ -23,6 +24,7 @@ namespace IpaDesktop
         {
             this.folder = Path.GetFullPath(folder);
         }
+        /// <summary>Сканирует IPA вне UI-потока, обновляя кэш только для изменившихся файлов.</summary>
         public Task<List<LocalRow>> ListAsync()
         {
             return Task.Run(delegate
@@ -55,6 +57,7 @@ namespace IpaDesktop
                 }
             });
         }
+        /// <summary>Копирует выбранные IPA в рабочую папку без перезаписи существующих файлов.</summary>
         public Task ImportAsync(IEnumerable<string> paths, CancellationToken ct)
         {
             return Task.Run(delegate
@@ -69,6 +72,7 @@ namespace IpaDesktop
                 }
             }, ct);
         }
+        /// <summary>Разрешает удаление только IPA из рабочей папки; символические ссылки не принимаются.</summary>
         public void Delete(string file)
         {
             var path = Path.GetFullPath(file);

@@ -1,5 +1,6 @@
 namespace IpaDesktop
 {
+    /// <summary>Сохраняемые настройки и независимые указатели текущих и прежних версий инструментов.</summary>
     public class State
     {
         public State()

@@ -14,6 +14,7 @@ using System.Web.Script.Serialization;
 
 namespace IpaDesktop
 {
+    /// <summary>Обнаруживает iPhone и устанавливает IPA по реальному UDID, а не по подписи устройства.</summary>
     public sealed class DeviceService
     {
         readonly IProcessRunner runner;
@@ -31,6 +32,7 @@ namespace IpaDesktop
             {
             };
         }
+        /// <summary>Получает UDID подключённых устройств и добавляет понятные имена для выбора в интерфейсе.</summary>
         public async Task<List<DeviceRow>> FindAsync(CancellationToken ct)
         {
             Result result;
@@ -89,6 +91,7 @@ namespace IpaDesktop
             foreach (var group in devices.GroupBy(x => x.Name).Where(g => g.Count() > 1)) foreach (var device in group) device.Name += " · " + device.ID.Substring(Math.Max(0, device.ID.Length - 6));
             return devices;
         }
+        /// <summary>Устанавливает указанный IPA на выбранный UDID с поддержкой отмены.</summary>
         public async Task InstallAsync(DeviceRow device, LocalRow file, CancellationToken ct)
         {
             if (!File.Exists(file.Path)) throw new IOException("IPA-файл больше не существует.");

@@ -13,8 +13,10 @@ using Microsoft.Win32;
 
 namespace IpaDesktop
 {
+    /// <summary>Выводит буфер журнала в WPF и поддерживает прокрутку к последним сообщениям.</summary>
     public static class JournalView
     {
+        /// <summary>Подключает обновление журнала при открытии вкладки и прокрутку к последней записи.</summary>
         public static void Attach(TextBox journal, BufferedJournal buffer)
         {
             journal.IsVisibleChanged += delegate
@@ -27,6 +29,7 @@ namespace IpaDesktop
                 }));
             };
         }
+        /// <summary>Добавляет накопленные строки и прокручивает вид к актуальным данным.</summary>
         public static void Flush(TextBox journal, BufferedJournal buffer, bool all)
         {
             var text = new StringBuilder();

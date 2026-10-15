@@ -4,12 +4,14 @@ using System.Text.RegularExpressions;
 using System.Collections.Generic;
 namespace IpaDesktop
 {
+    /// <summary>Создаёт диагностический отчёт и удаляет известные секреты, почту и идентификаторы до записи.</summary>
     public static class DiagnosticReport
     {
         static string Replace(string text, string pattern, string replacement)
         {
             return Regex.Replace(text, pattern, replacement, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, TimeSpan.FromSeconds(2));
         }
+        /// <summary>Очищает текст по структурным шаблонам и известным приватным значениям до экспорта.</summary>
         public static string Redact(string text, IEnumerable<string> privateValues)
         {
             text = text ?? "";
@@ -27,6 +29,7 @@ namespace IpaDesktop
             text = Replace(text, @"\beyJ[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+", "[ТОКЕН]");
             return text;
         }
+        /// <summary>Формирует сводку версий и журнал, затем очищает весь отчёт от чувствительных данных.</summary>
         public static string Create(string journal, string engineVersion, string toolsVersion, IEnumerable<string> privateValues)
         {
             var header = "IPA Desktop " + GuiUpdater.CurrentVersion + Environment.NewLine + "Windows: " + Environment.OSVersion.Version + Environment.NewLine + "ipatool: " + engineVersion + Environment.NewLine + "Device tools: " + toolsVersion + Environment.NewLine + "Created: " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + Environment.NewLine + Environment.NewLine;

@@ -14,6 +14,7 @@ using System.Web.Script.Serialization;
 
 namespace IpaDesktop
 {
+    /// <summary>Подменяемый контракт запуска процессов, журналирования и отмены для Windows и тестов.</summary>
     public interface IProcessRunner
     {
         Action<string> Log

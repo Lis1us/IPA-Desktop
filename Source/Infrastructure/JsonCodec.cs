@@ -14,6 +14,7 @@ using System.Web.Script.Serialization;
 
 namespace IpaDesktop
 {
+    /// <summary>Единая обёртка JSON-сериализации для совместимости с .NET Framework без внешних пакетов.</summary>
     public static class JsonCodec
     {
         static JavaScriptSerializer Serializer

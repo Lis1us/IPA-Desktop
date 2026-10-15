@@ -13,6 +13,7 @@ using Microsoft.Win32;
 
 namespace IpaDesktop
 {
+    /// <summary>Связывает кнопки обновления и отката GUI, ipatool и инструментов установки.</summary>
     public sealed class UpdatesController : WindowController
     {
         Release guiRelease;
@@ -55,7 +56,7 @@ namespace IpaDesktop
             });
             On("OpenGuiReleases", delegate
             {
-                Process.Start(new ProcessStartInfo("https://github.com/iamdarkls/IPA-Desktop/releases")
+                Process.Start(new ProcessStartInfo(AppInfo.ReleasesUrl)
                 {
                     UseShellExecute = true
                 });
@@ -84,7 +85,7 @@ namespace IpaDesktop
             });
             On("OpenDeviceReleases", delegate
             {
-                Process.Start(new ProcessStartInfo("https://github.com/iamdarkls/IPA-Desktop/releases?q=device-tools") { UseShellExecute = true });
+                Process.Start(new ProcessStartInfo(AppInfo.ReleasesUrl + "?q=device-tools") { UseShellExecute = true });
             });
             On("CheckUpdate", delegate
             {
@@ -127,6 +128,7 @@ namespace IpaDesktop
                 }
             };
         }
+        /// <summary>Пересчитывает доступность действий по состоянию выбора и выполняемой операции.</summary>
         public override void RefreshActions()
         {
             C<Button>("InstallGuiUpdate").IsEnabled = !busy && guiRelease != null;

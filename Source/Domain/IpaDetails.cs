@@ -1,5 +1,6 @@
 namespace IpaDesktop
 {
+    /// <summary>Метаданные IPA, прочитанные из архива; отсутствующие поля остаются неизвестными.</summary>
     public sealed class IpaDetails
     {
         public string AppStoreID { get; set; }

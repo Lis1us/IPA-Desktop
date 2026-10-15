@@ -223,6 +223,31 @@ try {
  if($saved.Count -ne 1 -or $saved[0].Apps.Count -ne 2){throw 'Inline save lost the completed download selection'}
  Click 'ClearChosen';Pump
  if($window.FindName('AddToSet').IsEnabled -or $window.FindName('SaveSet').IsEnabled){throw 'Explicit clear retained stale set selection'}
+ # Multiple sets can be checked together; overlapping IDs preserve manually selected versions.
+ $a=New-Object IpaDesktop.AppRow;$a.ID='444';$a.Name='Four'
+ $b=New-Object IpaDesktop.AppRow;$b.ID='555';$b.Name='Five'
+ $c=New-Object IpaDesktop.AppRow;$c.ID='666';$c.Name='Six'
+ $engine.AppSets.SaveApps('Overlap A',[IpaDesktop.AppRow[]]@($a,$b))
+ $engine.AppSets.SaveApps('Overlap B',[IpaDesktop.AppRow[]]@($b,$c))
+ $desktop.GetType().GetMethod('RefreshAppSets',[Reflection.BindingFlags]'Instance,NonPublic').Invoke($desktop,@())|Out-Null
+ $window.FindName('Query').Text='555';Click 'Search';WaitIdle
+ $searchController.GetType().GetField('versionApp',[Reflection.BindingFlags]'Instance,NonPublic').SetValue($searchController,'555')
+ $window.FindName('VersionList').Items.Add('888')|Out-Null;$window.FindName('VersionList').SelectedIndex=1
+ Click 'AddChosen';Pump
+ $list=$window.FindName('AppSets');$list.SelectedItems.Clear()
+ foreach($set in $list.Items){if($set.Name -like 'Overlap *'){$list.SelectedItems.Add($set)|Out-Null}}
+ $tabs.SelectedIndex=4;Pump
+ if($list.SelectedItems.Count -ne 2 -or !$window.FindName('SetPreview').Text.Contains('3')){throw 'Multiple-set selection/preview failed'}
+ Click 'UseSet';WaitIdle
+ $queue=@($window.FindName('ChosenApps').Items)
+ if($queue.Count -ne 3 -or ($queue|Where-Object ID -eq '555').VersionID -ne '888'){throw 'Multiple sets duplicated IDs or reset selected version'}
+ $tabs.SelectedIndex=4;Pump;Click 'UseSet';WaitIdle
+ if($window.FindName('ChosenApps').Items.Count -ne 3){throw 'Adding multiple sets twice duplicated the queue'}
+ $reopened=New-Object IpaDesktop.Engine($temp)
+ if(@($reopened.AppSets.Load()|Where-Object Name -like 'Overlap *').Count -ne 2){throw 'Multiple sets did not survive reopening'}
+ $tabs.SelectedIndex=4;Pump;Click 'DeleteSet';Pump
+ if(@($engine.AppSets.Load()|Where-Object Name -like 'Overlap *').Count -ne 0 -or $window.FindName('StorageFiles').Items.Count -ne 2){throw 'Batch set deletion lost files or retained selected sets'}
+ Write-Host 'PASS: simultaneous sets, overlapping IDs, version preservation, repeated additions, persistence and independent deletion'
  Write-Host 'PASS: editable inline set picker, additive deduplication, cross-tab refresh, both save buttons after completed download and explicit clear'
  Write-Host 'PASS: retry snapshot/version isolation, queue progress, saved set UI and storage UI'
  Write-Host 'PASS: real controller composition; search/clear/selection/removal; IPA selection/removal; device button/names; account state'

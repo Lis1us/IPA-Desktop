@@ -7,7 +7,7 @@
 | ../Source/Domain | Данные и правила выбора без зависимости от WPF | State, AppRow, LocalRow, DeviceRow, DownloadSelection, InstallationSelection, SearchSession |
 | ../Source/Infrastructure | Операции с ОС и форматами данных | ProcessRunner, SettingsStore, ToolLocator, IpaMetadata, JsonCodec, BufferedJournal |
 | ../Source/Services | Прикладные операции | AppToolClient, ApplicationDownloads, AppCatalog, DeviceService, AppleSupportService, LocalAppRepository, EngineUpdater, GuiUpdater |
-| ../Source/Presentation | Отображение и обработка действий | Desktop, AccountController, SearchController, FilesController, UpdatesController, WindowController |
+| ../Source/Presentation | Отображение и обработка действий | Desktop, AccountController, SearchController, FilesController, AppSetsController, StorageController, UpdatesController, WindowController |
 
 Desktop создаёт контроллеры, управляет временем жизни окна, журналом, отменой и состоянием текущей операции. Контроллер каждой вкладки хранит её выбор и подключает обработчики кнопок. Для операций с файлами и устройствами контроллеры обращаются к сервисам.
 
@@ -29,7 +29,7 @@ Verify-Engine.ps1 проверяет разделение источников, 
 2. Выполнить powershell -NoProfile -ExecutionPolicy Bypass -File Scripts/Sync-Sources.ps1.
 3. Выполнить Build.cmd.
 4. Запустить проверки из Tests: Verify.ps1, Verify-IpaMetadata.ps1, Verify-Updater.ps1, Verify-Design.ps1, Verify-Services.ps1, Verify-Engine.ps1 и Verify-Layout.ps1. Для проверки структуры предварительно создать ZIP через Scripts/Package.ps1. WPF-проверки запускать в Windows PowerShell с -STA.
-5. Для выпуска повысить GuiUpdater.CurrentVersion и версию в MainWindow.xaml, добавить changelogs/vX.Y.Z.md и синхронизировать исходники.
+5. Для выпуска повысить AppInfo.Version и версию в MainWindow.xaml, добавить changelogs/vX.Y.Z.md и синхронизировать исходники.
 
 Файлы Generated/Core.cs, Generated/App.cs, Generated/IpaMetadata.cs, Generated/WindowTheme.cs и Generated/GuiUpdater.cs генерируются из Source. Их можно компилировать прежним Build.cmd без дополнительных пакетов. Для совместимости с обновлением 0.1.6–0.1.12 ZIP содержит служебные копии прежних путей. При первом запуске InstallationLayout раскладывает ресурсы по новым папкам и убирает только копии, совпадающие с содержимым текущей сборки. Изменённые пользователем файлы сохраняются. Следующие обновления работают напрямую с новой структурой.
 
@@ -49,12 +49,25 @@ Assets — иконки; Tests — проверки и фикстуры; Scripts
 
 ## Очереди, наборы, хранилище и диагностика
 
-AppSetStore хранит AppSets.json отдельно от state.json, атомарно заменяет конфигурацию и разрешает только имена IPA из Downloads. FilesController добавляет найденные файлы набора в InstallationSelection; отсутствующие файлы явно отображаются.
+AppSetStore хранит AppSets.json отдельно от state.json. AppSetRules проверяет формат и объединяет ID, AtomicFile атомарно заменяет конфигурацию. Наборы сохраняют только ID и названия; аккаунты, телефоны и версии IPA в них не закреплены. Прежние записи Files читаются только для миграции по метаданным IPA. ResolveMany сначала разрешает все выбранные наборы, затем одной записью сохраняет миграцию: ошибка одного набора не оставляет частично обновлённую конфигурацию.
 
-SearchController и FilesController хранят отдельные снимки ошибок, сохраняя ID версии при повторе загрузки. Отмена не добавляет не начатые элементы в ошибки. Повтор загрузки более старой версии не убирает отдельно выбранную новую версию того же приложения.
+AppSetsController владеет обоими интерфейсами наборов. Обе кнопки сохранения дополняют набор, а не перезаписывают его. Множественный выбор ListBox позволяет объединить несколько наборов одной операцией. DownloadSelection.AddMissing исключает повторы и сохраняет ранее выбранный VersionID. До вызова AddMissing весь вход проверяется, чтобы некорректный ID не оставил частичную очередь.
+
+StorageController получает тот же снимок LocalRow, что и FilesController, и отвечает только за сводку хранилища и выбор старых версий. Удаление проходит через единый сценарий FilesController с подтверждением и корзиной. AppInfo содержит единственные значения версии и репозитория, используемые C#-кодом.
+
+BatchRunner выполняет последовательные пакеты загрузки и установки: ошибка элемента не останавливает остальные, отмена прерывает пакет и не записывает ожидающие элементы в ошибки. Обработчики UI продолжаются в исходном SynchronizationContext, сами операции выполняются асинхронными сервисами. SearchController и FilesController хранят отдельные снимки ошибок, сохраняя ID версии при повторе загрузки. Отмена не добавляет не начатые элементы в ошибки. Повтор загрузки более старой версии не убирает отдельно выбранную новую версию того же приложения.
 
 QueueProgress получает PROGRESS:N из ipatool и проценты ideviceinstaller, сохраняет состояние под lock и отрисовывается таймером Desktop. ProcessRunner подавляет повтор одинаковых процентов; обновления не заполняют журнал. Объём/скорость отображаются только при наличии в выводе.
 
 IpaMetadata читает корневые iTunesMetadata и Info.plist основной Payload/*.app в XML/binary формате с ограничением размера. LocalAppRepository кэширует метаданные по пути, размеру и времени изменения. StorageAnalysis сравнивает числовые версии в группе bundle ID + Apple Account; неизвестные данные не дают кандидатов на удаление. Удаление использует существующую проверку Downloads и корзину.
 
 DiagnosticReport очищает снимок журнала до записи: структурированные секреты JSON/plist, заголовки, аргументы CLI, почту, профильные пути и идентификаторы устройств. Экспорт не включает state.json, файлы сессии, IPA или сетевую отправку. Verify-WorkflowFeatures.ps1 проверяет наборы, границы путей, метаданные, изоляцию аккаунтов, прогресс и очистку отчёта; Verify-Services.ps1 проверяет связь контроллеров с новыми кнопками.
+
+## Правила сопровождения
+
+- Комментарии к классам в Source описывают ответственность; комментарии к методам объясняют контракты, ограничения и причины нетривиальных решений.
+- Контроллеры не запускают процессы и не разбирают IPA напрямую. Сервисы не получают ссылки на WPF-контролы.
+- Снимки очередей копируются перед запуском. ID приложения и путь IPA используются как разные ключи; название не является идентификатором.
+- Настройки и наборы используют одну AtomicFile.WriteUtf8. Уникальный временный файл очищается даже при ошибке, исходный файл остаётся на месте.
+- Изменения в Source требуют обновления Generated через Sync-Sources.ps1. Комментарии входят и в переносимые снимки.
+- Verify-Services проверяет несколько наборов одновременно, пересечение ID, сохранение выбранной версии, повторное добавление и перезапуск хранилища. Verify-WorkflowFeatures проверяет продолжение пакета после ошибки, отмену и целостность записи.

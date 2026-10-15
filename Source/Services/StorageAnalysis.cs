@@ -3,8 +3,10 @@ using System.Linq;
 using System.Collections.Generic;
 namespace IpaDesktop
 {
+    /// <summary>Считает размеры и отмечает старые числовые версии только внутри одного приложения и аккаунта.</summary>
     public static class StorageAnalysis
     {
+        /// <summary>Форматирует размер в удобные единицы без изменения исходного числа байт.</summary>
         public static string Bytes(long bytes)
         {
             if (bytes >= 1073741824) return (bytes / 1073741824.0).ToString("N2") + " ГБ";
@@ -16,6 +18,7 @@ namespace IpaDesktop
             if (!Version.TryParse(text, out value)) return null;
             return new Version(value.Major, value.Minor, Math.Max(0, value.Build), Math.Max(0, value.Revision));
         }
+        /// <summary>Помечает старые версии только при известных bundle ID, аккаунте и числовой версии.</summary>
         public static void Mark(IEnumerable<LocalRow> rows)
         {
             var list = rows.ToList();

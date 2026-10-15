@@ -7,11 +7,13 @@ using Microsoft.Win32;
 
 namespace IpaDesktop
 {
+    /// <summary>Только читает службы и реестр Windows; не устанавливает драйверы и не меняет службы.</summary>
     public interface IAppleSupportProbe
     {
         AppleSupportSnapshot Read();
     }
 
+    /// <summary>Только читает службы и реестр Windows; не устанавливает драйверы и не меняет службы.</summary>
     public sealed class WindowsAppleSupportProbe : IAppleSupportProbe
     {
         public AppleSupportSnapshot Read()

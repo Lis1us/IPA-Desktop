@@ -14,6 +14,7 @@ using System.Web.Script.Serialization;
 
 namespace IpaDesktop
 {
+    /// <summary>Находит исполняемые файлы в выбранной версии движка или отдельном комплекте устройства.</summary>
     public sealed class ToolLocator
     {
         readonly SettingsStore store;
@@ -35,6 +36,7 @@ namespace IpaDesktop
         {
             this.store = store;
         }
+        /// <summary>Возвращает путь выбранной версии инструментов с проверкой допустимости имени.</summary>
         public string VersionRoot(string version)
         {
             if (String.IsNullOrEmpty(version)) throw new Exception("Сначала установите инструменты: кнопка «Проверить обновления».");
@@ -45,6 +47,7 @@ namespace IpaDesktop
         }
         public string CurrentRoot { get { return VersionRoot(Settings.Current); } }
         public string DeviceRoot { get { return VersionRoot(Settings.DeviceCurrent ?? Settings.Current); } }
+        /// <summary>Находит нужный бинарник в активном комплекте и сообщает об отсутствии.</summary>
         public string Find(string pattern)
         {
             var root = pattern.StartsWith("ipatool", StringComparison.OrdinalIgnoreCase) ? CurrentRoot : DeviceRoot;

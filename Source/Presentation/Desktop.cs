@@ -13,6 +13,7 @@ using Microsoft.Win32;
 
 namespace IpaDesktop
 {
+    /// <summary>Точка сборки WPF-приложения: связывает контроллеры, управляет операцией, отменой и журналом.</summary>
     public sealed class Desktop
     {
         Window w;
@@ -26,6 +27,8 @@ namespace IpaDesktop
         SearchController search;
         FilesController files;
         UpdatesController updates;
+        AppSetsController appSets;
+        StorageController storage;
         public Window Window
         {
             get
@@ -51,28 +54,36 @@ namespace IpaDesktop
         {
             exitingForUpdate = true;
         }
+        /// <summary>Возвращает текущий выбор, а при пустой очереди — независимый снимок последнего пакета.</summary>
         internal List<DownloadItem> SelectedDownloads() { return search.SelectedDownloads(); }
-        internal void AddSetApps(IEnumerable<AppRow> apps) { search.AddSetApps(apps); }
+        /// <summary>Дополняет очередь ID из наборов и сохраняет уже выбранные версии приложений.</summary>
+        internal int AddSetApps(IEnumerable<AppRow> apps) { return search.AddSetApps(apps); }
         internal void RefreshAppSets()
         {
-            if (files != null) files.LoadSets();
-            if (search != null) search.RefreshSets();
+            if (appSets != null) appSets.RefreshSets();
         }
+        internal void DeleteFiles(List<LocalRow> rows) { files.DeleteRows(rows); }
+        internal void ShowStorage(List<LocalRow> rows) { if (storage != null) storage.Show(rows); }
+        /// <summary>Применяет только последний результат сканирования, сохраняя выделение по пути файла.</summary>
         internal void RefreshFiles()
         {
             if (files != null) files.RefreshFiles();
         }
+        /// <summary>Обновляет состояния всех созданных контроллеров; допускает частичную инициализацию окна.</summary>
         internal void ApplyActions()
         {
             if (account != null) account.RefreshActions();
             if (search != null) search.RefreshActions();
             if (files != null) files.RefreshActions();
             if (updates != null) updates.RefreshActions();
+            if (appSets != null) appSets.RefreshActions();
+            if (storage != null) storage.RefreshActions();
         }
         internal T C<T>(string name) where T : class
         {
             return w.FindName(name) as T;
         }
+        /// <summary>Подключает действие к кнопке и передаёт исключения в общий обработчик интерфейса.</summary>
         internal void On(string name, Action action)
         {
             C<Button>(name).Click += delegate
@@ -90,19 +101,23 @@ namespace IpaDesktop
         System.Windows.Threading.DispatcherTimer journalTimer;
         readonly object privateGate = new object();
         readonly HashSet<string> reportPrivateValues = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        /// <summary>Запоминает значения для удаления из диагностического отчёта с ограничением размера набора.</summary>
         internal void RegisterPrivate(string value)
         {
             if (String.IsNullOrWhiteSpace(value) || value.Length > 1024) return;
             lock (privateGate) if (reportPrivateValues.Count < 2000) reportPrivateValues.Add(value);
         }
         readonly QueueProgress queueProgress = new QueueProgress();
+        /// <summary>Показывает название приложения и позицию в текущем пакете.</summary>
         internal void BeginQueue(string kind, int index, int total, string app)
         {
             queueProgress.Begin(kind, index, total, app);
             C<TextBlock>("Status").Text = kind + " " + index + "/" + total + ": " + app;
             RenderQueue();
         }
+        /// <summary>Фиксирует итоговые счётчики, прекращая обновление завершённого прогресса.</summary>
         internal void CompleteQueue(int success, int failed) { queueProgress.Complete(success, failed); RenderQueue(); }
+        /// <summary>Отрисовывает снимок прогресса в UI-потоке без прямого доступа фоновых процессов к WPF.</summary>
         void RenderQueue()
         {
             C<TextBlock>("OperationDetail").Text = queueProgress.Text;
@@ -111,21 +126,25 @@ namespace IpaDesktop
             C<ProgressBar>("Progress").IsIndeterminate = busy && queueProgress.Indeterminate;
             C<ProgressBar>("Progress").Value = queueProgress.Value;
         }
+        /// <summary>Передаёт метрики прогрессу, а обычные сообщения — в ограниченный буфер журнала.</summary>
         internal void Log(string text)
         {
             if (queueProgress.Feed(text)) return;
             journalBuffer.Add(text);
         }
+        /// <summary>Переносит накопленные сообщения журнала в интерфейс.</summary>
         void FlushJournal()
         {
             JournalView.Flush(C<TextBox>("Journal"), journalBuffer, false);
         }
+        /// <summary>Показывает ошибку пользователю и сохраняет сообщение в журнале.</summary>
         internal void Error(Exception e)
         {
             Log(e.Message);
             C<TextBlock>("Status").Text = "Ошибка — подробности в журнале";
             MessageBox.Show(w, e.Message, "IPA Desktop", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
+        /// <summary>Отображает настройки, блокируя повторную реакцию обработчиков переключателей.</summary>
         internal void StateView()
         {
             C<TextBlock>("EngineVersion").Text = "Движок: " + (engine.Settings.Version ?? "не установлен");
@@ -135,6 +154,7 @@ namespace IpaDesktop
             C<TextBlock>("DeviceToolsVersion").Text = (engine.Settings.DeviceSource == EngineUpdater.DeviceRepository ? "Наш комплект: " : "Прежний комплект: ") + (engine.Settings.DeviceVersion ?? (engine.Settings.Source == null ? engine.Settings.Version : null) ?? "не установлен");
             setting = false;
         }
+        /// <summary>Не допускает параллельных операций, управляет отменой и восстанавливает UI в finally.</summary>
         internal async void Work(string title, Func<CancellationToken, Task> action)
         {
             if (busy) return;
@@ -156,6 +176,7 @@ namespace IpaDesktop
             C<ProgressBar>("Progress").IsIndeterminate = true;
             C<TextBlock>("Status").Text = title;
             Log(title);
+            ApplyActions();
             try
             {
                 await action(cancellation.Token);
@@ -244,6 +265,8 @@ namespace IpaDesktop
             search = new SearchController(this, engine);
             files = new FilesController(this, engine);
             updates = new UpdatesController(this, engine);
+            storage = new StorageController(this, engine);
+            appSets = new AppSetsController(this, engine);
             StateView();
             RefreshFiles();
             On("Cancel", delegate
@@ -283,7 +306,7 @@ namespace IpaDesktop
             ApplyActions();
             w.Loaded += delegate
             {
-                Log("IPA Desktop 0.1.19. Файлы: " + engine.Downloads);
+                Log("IPA Desktop " + AppInfo.Version + ". Файлы: " + engine.Downloads);
                 if (!checkAtStartup) return;
                 Work("Проверка движка и сохранённого входа…", async delegate(CancellationToken ct)
                 {
@@ -341,6 +364,7 @@ namespace IpaDesktop
                 });
             };
         }
+        /// <summary>Создаёт единственный экземпляр приложения и запускает цикл сообщений WPF.</summary>
         [STAThread] public static void Main()
         {
             bool created;

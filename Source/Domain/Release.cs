@@ -1,5 +1,6 @@
 namespace IpaDesktop
 {
+    /// <summary>Ответ GitHub Releases с тегом и архивами; используется при проверке доступных обновлений.</summary>
     public class Release
     {
         public bool draft { get; set; }
