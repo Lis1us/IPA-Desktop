@@ -20,6 +20,13 @@ namespace IpaDesktop
         Engine engine;
         CancellationTokenSource cancellation;
         bool busy;
+        bool firmwareCritical;
+        internal void SetFirmwareCritical(bool value)
+        {
+            firmwareCritical = value;
+            C<Button>("Cancel").IsEnabled = busy && !value;
+            C<TextBlock>("Status").Text = value ? "Прошивка iPhone — не отключайте USB и питание" : "Завершение операции…";
+        }
         bool setting;
         bool exitingForUpdate;
         long lastProgress;
@@ -29,6 +36,7 @@ namespace IpaDesktop
         UpdatesController updates;
         AppSetsController appSets;
         StorageController storage;
+        FirmwareController firmware;
         public Window Window
         {
             get
@@ -78,6 +86,7 @@ namespace IpaDesktop
             if (updates != null) updates.RefreshActions();
             if (appSets != null) appSets.RefreshActions();
             if (storage != null) storage.RefreshActions();
+            if (firmware != null) firmware.RefreshActions();
             C<Button>("NoticeRetry").IsEnabled = !busy && noticeRetry != null && lastReport != null && lastReport.Failed > 0 &&
                 (lastReport.Kind == "Скачивание" ? C<Button>("RetryDownloads").IsEnabled : C<Button>("RetryInstalls").IsEnabled);
             C<Button>("ShowLastReport").IsEnabled = lastReport != null;
@@ -297,7 +306,7 @@ namespace IpaDesktop
                 w.Icon = decoder.Frames[0];
                 C<Image>("BrandIcon").Source = decoder.Frames[decoder.Frames.Count - 1];
             }
-            engine = backend ?? new Engine(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "IPA-Desktop"));
+            engine = backend ?? new Engine(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "IPA-Desktop-FirmwarePreview"));
             engine.Log = Log;
             engine.Progress = delegate(double value)
             {
@@ -316,6 +325,7 @@ namespace IpaDesktop
             updates = new UpdatesController(this, engine);
             storage = new StorageController(this, engine);
             appSets = new AppSetsController(this, engine);
+            firmware = new FirmwareController(this, engine);
             StateView();
             RefreshFiles();
             Action showReport = delegate
@@ -328,7 +338,7 @@ namespace IpaDesktop
             On("NoticeRetry", delegate { if (!busy && noticeRetry != null) noticeRetry(); });
             On("Cancel", delegate
             {
-                if (cancellation != null) cancellation.Cancel();
+                if (cancellation != null && !firmwareCritical) cancellation.Cancel();
             });
             On("ExportDiagnostics", delegate
             {
@@ -357,7 +367,7 @@ namespace IpaDesktop
                 if (busy)
                 {
                     e.Cancel = true;
-                    MessageBox.Show(w, "Сначала отмените текущую операцию и дождитесь её завершения.", "Выполняется операция");
+                    MessageBox.Show(w, firmwareCritical ? "Идёт прошивка. Дождитесь завершения, не отключайте iPhone и питание." : "Сначала отмените текущую операцию и дождитесь её завершения.", "Выполняется операция");
                 }
             };
             ApplyActions();

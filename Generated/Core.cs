@@ -19,6 +19,7 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Threading;
 using System.Web.Script.Serialization;
+using System.Xml;
 using System;
 
 // Domain/AppInfo.cs
@@ -298,6 +299,22 @@ namespace IpaDesktop
     }
 }
 
+// Domain/FirmwareDevice.cs
+namespace IpaDesktop
+{
+    /// <summary>Снимок конкретного iPhone; ECID сохраняет адресацию после перехода в Recovery.</summary>
+    public sealed class FirmwareDevice
+    {
+        public string Udid { get; set; }
+        public string Ecid { get; set; }
+        public string Name { get; set; }
+        public string ProductType { get; set; }
+        public string HardwareModel { get; set; }
+        public string Version { get; set; }
+        public override string ToString() { return Name + " · " + ProductType + " · iOS " + Version; }
+    }
+}
+
 // Domain/InstallationSelection.cs
 namespace IpaDesktop
 {
@@ -531,7 +548,15 @@ namespace IpaDesktop
             lock (gate)
             {
                 if (kind == null || summary != null) return false;
-                var update = TransferUpdate.Parse(line, kind == "Установка");
+                TransferUpdate update = null;
+                if (kind == "Прошивка" && line != null)
+                {
+                    var match = Regex.Match(line, @"^progress: (\d+) (\d+(?:\.\d+)?)$");
+                    double fraction;
+                    if (match.Success && Double.TryParse(match.Groups[2].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out fraction) && fraction >= 0 && fraction <= 1)
+                        update = new TransferUpdate { Percent = fraction * 100, Metrics = "этап " + match.Groups[1].Value + " · процент текущего этапа" };
+                }
+                if (update == null) update = TransferUpdate.Parse(line, kind == "Установка");
                 if (update == null) return false;
                 percent = update.Percent; metrics = update.Metrics;
                 return true;
@@ -856,21 +881,28 @@ namespace IpaDesktop
         [return: MarshalAs(UnmanagedType.Bool)]
         static extern bool CreateHardLink(string newName, string existingName, IntPtr securityAttributes);
 
-        InstallationPackage(string source)
+        InstallationPackage(string source, string extension)
         {
             WorkingDirectory = Path.GetDirectoryName(Path.GetFullPath(source));
             string name = ".install-" + Guid.NewGuid().ToString("N");
             directory = Path.Combine(WorkingDirectory, name);
-            RelativePath = Path.Combine(name, "package.ipa");
+            RelativePath = Path.Combine(name, "package" + extension);
         }
 
         /// <summary>Предпочитает жёсткую ссылку без копирования больших IPA; на других ФС копирует с отменой.</summary>
         public static Task<InstallationPackage> CreateAsync(string source, CancellationToken ct)
         {
+            return CreateAsync(source, ct, ".ipa");
+        }
+
+        /// <summary>Отдельное расширение для IPSW; каталог создаётся с уникальным именем и принадлежит только этой операции.</summary>
+        public static Task<InstallationPackage> CreateAsync(string source, CancellationToken ct, string extension)
+        {
+            if (extension != ".ipa" && extension != ".ipsw") throw new ArgumentException("Unsupported extension.");
             return Task.Run(delegate
             {
                 ct.ThrowIfCancellationRequested();
-                var package = new InstallationPackage(source);
+                var package = new InstallationPackage(source, extension);
                 try
                 {
                     Directory.CreateDirectory(package.directory);
@@ -902,7 +934,7 @@ namespace IpaDesktop
             try
             {
                 File.Delete(Path.Combine(WorkingDirectory, RelativePath));
-                Directory.Delete(directory);
+                Directory.Delete(directory, true);
             }
             catch (IOException) { }
             catch (UnauthorizedAccessException) { }
@@ -1132,7 +1164,7 @@ namespace IpaDesktop
                                 {
                                     last = lastOutput;
                                 }
-                                Log("Процесс работает " + (int) elapsed.Elapsed.TotalSeconds + " с; без нового вывода " + (int)((Stopwatch.GetTimestamp() - last) / (double) Stopwatch.Frequency) + " с. При необходимости нажмите «Отмена».");
+                                Log("Процесс работает " + (int) elapsed.Elapsed.TotalSeconds + " с; без нового вывода " + (int)((Stopwatch.GetTimestamp() - last) / (double) Stopwatch.Frequency) + (token.CanBeCanceled ? " с. При необходимости нажмите «Отмена»." : " с. Дождитесь завершения, не отключайте устройство."));
                                 nextNotice += 30;
                             }
                         }
@@ -1984,6 +2016,7 @@ namespace IpaDesktop
                 return runner.Active;
             }
         }
+        public FirmwareService Firmware { get; private set; }
         public AppSetStore AppSets { get; private set; }
         public AppleSupportService AppleSupport { get; private set; }
         public DeviceService Devices
@@ -2044,6 +2077,7 @@ namespace IpaDesktop
             updater = new EngineUpdater(settings, runner);
             AppleSupport = new AppleSupportService(appleSupportProbe);
             Devices = new DeviceService(runner, locator);
+            Firmware = new FirmwareService(runner, Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "FirmwareTools"));
             LocalFiles = new LocalAppRepository(Downloads);
             AppSets = new AppSetStore(root, Downloads);
             ApplicationDownloads = new ApplicationDownloads(tools, Downloads);
@@ -2515,6 +2549,188 @@ namespace IpaDesktop
                 throw;
             }
             Log("Откат выполнен. Автообновление отключено, чтобы не вернуть проблемный релиз.");
+        }
+    }
+}
+
+// Services/FirmwareManifest.cs
+namespace IpaDesktop
+{
+    /// <summary>Читает только ограниченный BuildManifest, без распаковки многогигабайтного IPSW.</summary>
+    public sealed class FirmwareManifest
+    {
+        public string Version { get; private set; }
+        public string Build { get; private set; }
+        public List<string> Products { get; private set; }
+        readonly List<Tuple<string, string, string>> identities = new List<Tuple<string, string, string>>();
+        const int MaxManifest = 32 * 1024 * 1024;
+
+        static XmlNode Value(XmlNode dict, string key)
+        {
+            if (dict == null) return null;
+            foreach (XmlNode child in dict.ChildNodes)
+                if (child.Name == "key" && child.InnerText == key)
+                {
+                    var next = child.NextSibling;
+                    while (next != null && next.NodeType != XmlNodeType.Element) next = next.NextSibling;
+                    return next;
+                }
+            return null;
+        }
+        static string Text(XmlNode dict, string key)
+        {
+            var node = Value(dict, key);
+            return node != null && node.Name == "string" ? node.InnerText : null;
+        }
+        public static FirmwareManifest Read(string path)
+        {
+            using (var zip = ZipFile.OpenRead(path))
+            {
+                var entries = zip.Entries.Where(x => x.FullName == "BuildManifest.plist").ToList();
+                if (entries.Count != 1 || entries[0].Length > MaxManifest) throw new InvalidDataException("IPSW не содержит однозначный BuildManifest допустимого размера.");
+                using (var input = entries[0].Open())
+                using (var bytes = new MemoryStream())
+                {
+                    var buffer = new byte[8192]; int n;
+                    while ((n = input.Read(buffer, 0, buffer.Length)) > 0)
+                    {
+                        if (bytes.Length + n > MaxManifest) throw new InvalidDataException("BuildManifest слишком велик.");
+                        bytes.Write(buffer, 0, n);
+                    }
+                    bytes.Position = 0;
+                    var doc = new XmlDocument { XmlResolver = null };
+                    try
+                    {
+                        using (var reader = XmlReader.Create(bytes, new XmlReaderSettings { DtdProcessing = DtdProcessing.Ignore, XmlResolver = null, MaxCharactersInDocument = MaxManifest }))
+                            doc.Load(reader);
+                    }
+                    catch (XmlException) { throw new InvalidDataException("Не поддерживается формат BuildManifest. Прошивка не будет запущена."); }
+                    var root = doc.SelectSingleNode("/plist/dict");
+                    var result = new FirmwareManifest { Version = Text(root, "ProductVersion"), Build = Text(root, "ProductBuildVersion"), Products = new List<string>() };
+                    var products = Value(root, "SupportedProductTypes");
+                    if (products != null) foreach (XmlNode product in products.ChildNodes) if (product.Name == "string") result.Products.Add(product.InnerText);
+                    var builds = Value(root, "BuildIdentities");
+                    if (builds != null) foreach (XmlNode identity in builds.ChildNodes)
+                    {
+                        var info = Value(identity, "Info");
+                        result.identities.Add(Tuple.Create(Text(info, "DeviceClass"), Text(info, "RestoreBehavior"), Text(info, "Variant")));
+                    }
+                    if (String.IsNullOrEmpty(result.Version) || String.IsNullOrEmpty(result.Build) || result.Products.Count == 0)
+                        throw new InvalidDataException("IPSW не содержит версии, сборки или списка моделей.");
+                    return result;
+                }
+            }
+        }
+        /// <summary>Запрещает несовместимую модель, неизвестный вариант и откат в режиме сохранения данных.</summary>
+        public void Validate(FirmwareDevice device, bool erase)
+        {
+            if (device == null || !Products.Contains(device.ProductType)) throw new InvalidDataException("Эта IPSW не предназначена для выбранного iPhone.");
+            string behavior = erase ? "Erase" : "Update";
+            string variant = erase ? "Customer Erase Install (IPSW)" : "Customer Upgrade Install (IPSW)";
+            if (!identities.Any(x => String.Equals(x.Item1, device.HardwareModel, StringComparison.OrdinalIgnoreCase) && x.Item2 == behavior && x.Item3 == variant))
+                throw new InvalidDataException("IPSW не содержит подтверждённый вариант " + behavior + " для этой модели. Переход к другому режиму запрещён.");
+            if (!erase)
+            {
+                System.Version current, target;
+                if (!System.Version.TryParse(device.Version, out current) || !System.Version.TryParse(Version, out target) || target < current)
+                    throw new InvalidDataException("Обновление с сохранением данных запрещено: версия неизвестна или ниже установленной.");
+            }
+        }
+    }
+}
+
+// Services/FirmwareService.cs
+namespace IpaDesktop
+{
+    /// <summary>Изолированный комплект прошивки. Обычные обновления DeviceTools его не заменяют.</summary>
+    public sealed class FirmwareService
+    {
+        readonly IProcessRunner runner;
+        readonly string directory;
+        public FirmwareService(IProcessRunner runner, string directory) { this.runner = runner; this.directory = directory; }
+        string Tool(string name)
+        {
+            string path = Path.Combine(directory, "windows_amd64", name + ".exe");
+            if (!File.Exists(path)) throw new IOException("Комплект прошивки отсутствует. Распакуйте тестовую сборку целиком, включая папку FirmwareTools.");
+            return path;
+        }
+        async Task<Result> Inspect(string name, string[] args, CancellationToken ct)
+        {
+            using (var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct))
+            {
+                timeout.CancelAfter(TimeSpan.FromSeconds(20));
+                try
+                {
+                    var result = await runner.Run(Tool(name), args, timeout.Token, false, false);
+                    ToolResponse.Ensure(result); return result;
+                }
+                catch (OperationCanceledException)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    throw new IOException("iPhone или инструмент не ответил за 20 секунд.");
+                }
+            }
+        }
+        /// <summary>Первая экспериментальная версия начинает работу только с доверенным iPhone в обычном режиме.</summary>
+        public async Task<List<FirmwareDevice>> FindAsync(CancellationToken ct)
+        {
+            var help = await Inspect("idevicerestore", new[] { "--help" }, ct);
+            if (!help.Output.Contains("--ipa-desktop-update-only")) throw new IOException("Установлен idevicerestore без нашей защиты от стирания. Запуск запрещён.");
+            var list = await Inspect("idevice_id", new[] { "-l" }, ct);
+            var devices = new List<FirmwareDevice>();
+            foreach (var id in list.Output.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries).Select(x => x.Trim()).Distinct())
+            {
+                if (!System.Text.RegularExpressions.Regex.IsMatch(id, "^[a-fA-F0-9-]{20,}$")) continue;
+                devices.Add(await ReadDevice(id, ct));
+            }
+            return devices;
+        }
+        async Task<FirmwareDevice> ReadDevice(string id, CancellationToken ct)
+        {
+            var info = await Inspect("ideviceinfo", new[] { "-u", id }, ct);
+            var values = new Dictionary<string, string>();
+            foreach (var line in info.Output.Split('\n'))
+            {
+                int i = line.IndexOf(':');
+                if (i > 0) values[line.Substring(0, i).Trim()] = line.Substring(i + 1).Trim();
+            }
+            string[] required = { "UniqueChipID", "DeviceName", "ProductType", "HardwareModel", "ProductVersion" };
+            if (required.Any(x => !values.ContainsKey(x))) throw new IOException("Не получены идентификатор, модель или версия iPhone. Разблокируйте его и подтвердите доверие.");
+            ulong ecid;
+            if (!UInt64.TryParse(values["UniqueChipID"], out ecid) || ecid == 0) throw new IOException("Некорректный ECID iPhone.");
+            return new FirmwareDevice { Udid = id, Ecid = ecid.ToString(System.Globalization.CultureInfo.InvariantCulture), Name = values["DeviceName"], ProductType = values["ProductType"], HardwareModel = values["HardwareModel"], Version = values["ProductVersion"] };
+        }
+        /// <summary>Проверяет устройство заново; блокирует изменение файла и использует ASCII-ссылку для нативного CLI.</summary>
+        public async Task RestoreAsync(FirmwareDevice chosen, string path, FirmwareManifest expected, bool erase, CancellationToken ct, Action beginCritical, Action endCritical)
+        {
+            var current = await ReadDevice(chosen.Udid, ct);
+            if (current.Ecid != chosen.Ecid || current.ProductType != chosen.ProductType || current.HardwareModel != chosen.HardwareModel || current.Version != chosen.Version)
+                throw new IOException("Состояние iPhone изменилось. Найдите устройство и подтвердите операцию заново.");
+            var help = await Inspect("idevicerestore", new[] { "--help" }, ct);
+            if (!help.Output.Contains("--ipa-desktop-update-only")) throw new IOException("Нет обязательной защиты от стирания.");
+            using (var original = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read))
+            {
+                await Task.Run(delegate {
+                    var actual = FirmwareManifest.Read(path);
+                    actual.Validate(current, erase);
+                    if (actual.Version != expected.Version || actual.Build != expected.Build) throw new IOException("Выбранная IPSW изменилась. Выполните проверку и подтверждение заново.");
+                }, ct);
+                using (var package = await InstallationPackage.CreateAsync(path, ct, ".ipsw"))
+                using (var locked = new FileStream(Path.Combine(package.WorkingDirectory, package.RelativePath), FileMode.Open, FileAccess.Read, FileShare.Read))
+                {
+                    // Проверяем именно подготовленный файл; исходный и временный файлы нельзя заменить до завершения.
+                    await Task.Run(() => FirmwareManifest.Read(locked.Name).Validate(current, erase), ct);
+                    ct.ThrowIfCancellationRequested();
+                    var args = new[] { "--ecid", current.Ecid, "--no-input", "--plain-progress", "--logfile", "NONE", "--cache-path", Path.Combine(Path.GetDirectoryName(package.RelativePath), "cache"), erase ? "--erase" : "--ipa-desktop-update-only", package.RelativePath };
+                    beginCritical();
+                    try
+                    {
+                        // Принудительное убийство процесса во время прошивки запрещено; отмена доступна до этой точки.
+                        ToolResponse.Ensure(await runner.Run(Tool("idevicerestore"), args, CancellationToken.None, false, true, package.WorkingDirectory));
+                    }
+                    finally { endCritical(); }
+                }
+            }
         }
     }
 }

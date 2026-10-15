@@ -45,7 +45,15 @@ namespace IpaDesktop
             lock (gate)
             {
                 if (kind == null || summary != null) return false;
-                var update = TransferUpdate.Parse(line, kind == "Установка");
+                TransferUpdate update = null;
+                if (kind == "Прошивка" && line != null)
+                {
+                    var match = Regex.Match(line, @"^progress: (\d+) (\d+(?:\.\d+)?)$");
+                    double fraction;
+                    if (match.Success && Double.TryParse(match.Groups[2].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out fraction) && fraction >= 0 && fraction <= 1)
+                        update = new TransferUpdate { Percent = fraction * 100, Metrics = "этап " + match.Groups[1].Value + " · процент текущего этапа" };
+                }
+                if (update == null) update = TransferUpdate.Parse(line, kind == "Установка");
                 if (update == null) return false;
                 percent = update.Percent; metrics = update.Metrics;
                 return true;

@@ -164,7 +164,7 @@ namespace IpaDesktop
                                 {
                                     last = lastOutput;
                                 }
-                                Log("Процесс работает " + (int) elapsed.Elapsed.TotalSeconds + " с; без нового вывода " + (int)((Stopwatch.GetTimestamp() - last) / (double) Stopwatch.Frequency) + " с. При необходимости нажмите «Отмена».");
+                                Log("Процесс работает " + (int) elapsed.Elapsed.TotalSeconds + " с; без нового вывода " + (int)((Stopwatch.GetTimestamp() - last) / (double) Stopwatch.Frequency) + (token.CanBeCanceled ? " с. При необходимости нажмите «Отмена»." : " с. Дождитесь завершения, не отключайте устройство."));
                                 nextNotice += 30;
                             }
                         }

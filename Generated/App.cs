@@ -313,6 +313,13 @@ namespace IpaDesktop
         Engine engine;
         CancellationTokenSource cancellation;
         bool busy;
+        bool firmwareCritical;
+        internal void SetFirmwareCritical(bool value)
+        {
+            firmwareCritical = value;
+            C<Button>("Cancel").IsEnabled = busy && !value;
+            C<TextBlock>("Status").Text = value ? "Прошивка iPhone — не отключайте USB и питание" : "Завершение операции…";
+        }
         bool setting;
         bool exitingForUpdate;
         long lastProgress;
@@ -322,6 +329,7 @@ namespace IpaDesktop
         UpdatesController updates;
         AppSetsController appSets;
         StorageController storage;
+        FirmwareController firmware;
         public Window Window
         {
             get
@@ -371,6 +379,7 @@ namespace IpaDesktop
             if (updates != null) updates.RefreshActions();
             if (appSets != null) appSets.RefreshActions();
             if (storage != null) storage.RefreshActions();
+            if (firmware != null) firmware.RefreshActions();
             C<Button>("NoticeRetry").IsEnabled = !busy && noticeRetry != null && lastReport != null && lastReport.Failed > 0 &&
                 (lastReport.Kind == "Скачивание" ? C<Button>("RetryDownloads").IsEnabled : C<Button>("RetryInstalls").IsEnabled);
             C<Button>("ShowLastReport").IsEnabled = lastReport != null;
@@ -590,7 +599,7 @@ namespace IpaDesktop
                 w.Icon = decoder.Frames[0];
                 C<Image>("BrandIcon").Source = decoder.Frames[decoder.Frames.Count - 1];
             }
-            engine = backend ?? new Engine(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "IPA-Desktop"));
+            engine = backend ?? new Engine(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "IPA-Desktop-FirmwarePreview"));
             engine.Log = Log;
             engine.Progress = delegate(double value)
             {
@@ -609,6 +618,7 @@ namespace IpaDesktop
             updates = new UpdatesController(this, engine);
             storage = new StorageController(this, engine);
             appSets = new AppSetsController(this, engine);
+            firmware = new FirmwareController(this, engine);
             StateView();
             RefreshFiles();
             Action showReport = delegate
@@ -621,7 +631,7 @@ namespace IpaDesktop
             On("NoticeRetry", delegate { if (!busy && noticeRetry != null) noticeRetry(); });
             On("Cancel", delegate
             {
-                if (cancellation != null) cancellation.Cancel();
+                if (cancellation != null && !firmwareCritical) cancellation.Cancel();
             });
             On("ExportDiagnostics", delegate
             {
@@ -650,7 +660,7 @@ namespace IpaDesktop
                 if (busy)
                 {
                     e.Cancel = true;
-                    MessageBox.Show(w, "Сначала отмените текущую операцию и дождитесь её завершения.", "Выполняется операция");
+                    MessageBox.Show(w, firmwareCritical ? "Идёт прошивка. Дождитесь завершения, не отключайте iPhone и питание." : "Сначала отмените текущую операцию и дождитесь её завершения.", "Выполняется операция");
                 }
             };
             ApplyActions();
@@ -945,6 +955,114 @@ namespace IpaDesktop
             {
                 if (generation == filesGeneration) Log("Не удалось обновить список IPA: " + e.Message);
             }
+        }
+    }
+}
+
+// Presentation/FirmwareController.cs
+namespace IpaDesktop
+{
+    /// <summary>Отдельная экспериментальная вкладка; явное подтверждение режима и конкретного ECID перед запуском.</summary>
+    public sealed class FirmwareController : WindowController
+    {
+        readonly FirmwareService service;
+        string path;
+        FirmwareManifest manifest;
+        bool critical;
+        public FirmwareController(Desktop view, Engine engine) : base(view, engine)
+        {
+            service = engine.Firmware;
+            C<ComboBox>("FirmwareDevices").SelectionChanged += delegate { ClearCheck(); };
+            C<RadioButton>("FirmwareErase").Checked += delegate { ClearCheck(); };
+            C<RadioButton>("FirmwareUpdate").Checked += delegate { ClearCheck(); };
+            On("FirmwareFind", delegate
+            {
+                ClearCheck();
+                Work("Поиск iPhone для прошивки…", async ct =>
+                {
+                    var devices = await service.FindAsync(ct);
+                    C<ComboBox>("FirmwareDevices").ItemsSource = devices;
+                    if (devices.Count > 0) C<ComboBox>("FirmwareDevices").SelectedIndex = 0;
+                    else C<TextBlock>("FirmwareInfo").Text = "iPhone не найден. Нужны обычный режим, разблокировка и доверие компьютеру.";
+                    foreach (var device in devices) { view.RegisterPrivate(device.Udid); view.RegisterPrivate(device.Ecid); }
+                });
+            });
+            On("FirmwareChoose", delegate
+            {
+                var picker = new OpenFileDialog { Filter = "Прошивка Apple (*.ipsw)|*.ipsw", CheckFileExists = true };
+                if (picker.ShowDialog(w) != true) return;
+                path = picker.FileName; ClearCheck(); C<TextBlock>("FirmwarePath").Text = path;
+            });
+            On("FirmwareCheck", delegate
+            {
+                var device = C<ComboBox>("FirmwareDevices").SelectedItem as FirmwareDevice;
+                bool erase = C<RadioButton>("FirmwareErase").IsChecked == true;
+                ClearCheck();
+                Work("Проверка совместимости IPSW…", async ct =>
+                {
+                    var checkedManifest = await System.Threading.Tasks.Task.Run(() => FirmwareManifest.Read(path), ct);
+                    checkedManifest.Validate(device, erase);
+                    manifest = checkedManifest;
+                    C<TextBlock>("FirmwareInfo").Text = "Совместимо: iOS " + manifest.Version + " (" + manifest.Build + "). " +
+                        (erase ? "ВСЕ данные будут удалены." : "Выбран вариант обновления с сохранением данных.") +
+                        " Подписывание проверит Apple при запуске; проверка совместимости не гарантирует восстановление.";
+                });
+            });
+            On("FirmwareStart", Start);
+            C<CheckBox>("FirmwareBackup").Click += delegate { ApplyActions(); };
+            C<TextBox>("FirmwareConfirm").TextChanged += delegate { ApplyActions(); };
+        }
+        void ClearCheck()
+        {
+            manifest = null;
+            C<CheckBox>("FirmwareBackup").IsChecked = false;
+            C<TextBox>("FirmwareConfirm").Text = "";
+            C<TextBlock>("FirmwareInfo").Text = "Выберите iPhone, IPSW и режим, затем проверьте совместимость.";
+            ApplyActions();
+        }
+        void Start()
+        {
+            if (busy || manifest == null) return;
+            var device = C<ComboBox>("FirmwareDevices").SelectedItem as FirmwareDevice;
+            bool erase = C<RadioButton>("FirmwareErase").IsChecked == true;
+            if (device == null || C<CheckBox>("FirmwareBackup").IsChecked != true || (erase && C<TextBox>("FirmwareConfirm").Text != "СТЕРЕТЬ")) return;
+            string summary = device + "\nECID: " + device.Ecid + "\niOS " + manifest.Version + " (" + manifest.Build + ")\n\n" +
+                (erase ? "Восстановление УДАЛИТ ВСЕ ДАННЫЕ." : "Обновление с сохранением данных. При сбое возможна потеря данных.") +
+                "\nПосле запуска остановка и закрытие приложения будут заблокированы. Не отключайте USB и питание. Продолжить?";
+            if (MessageBox.Show(w, summary, "Подтверждение прошивки", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) != MessageBoxResult.Yes) return;
+            Work("Подготовка прошивки iPhone…", async ct =>
+            {
+                view.StartReport("Прошивка iPhone", 1, null);
+                view.BeginQueue("Прошивка", 1, 1, device.Name);
+                try
+                {
+                    await service.RestoreAsync(device, path, manifest, erase, ct, delegate { critical = true; view.SetFirmwareCritical(true); RefreshActions(); },
+                        delegate { critical = false; view.SetFirmwareCritical(false); });
+                    view.ReportItem(device.Name, null); view.CompleteQueue(1, 0);
+                    C<TextBlock>("FirmwareInfo").Text = "Прошивка завершена. Проверьте запуск iPhone; блокировка активации сохраняется.";
+                }
+                catch (OperationCanceledException) { throw; }
+                catch (Exception e)
+                {
+                    view.ReportItem(device.Name, e); view.CompleteQueue(0, 1);
+                    throw new IOException("Прошивка не завершена. Проверьте состояние iPhone и подробности ошибки. При необходимости используйте восстановление в Apple Devices.\n" + e.Message, e);
+                }
+                finally { manifest = null; C<CheckBox>("FirmwareBackup").IsChecked = false; }
+            });
+        }
+        public override void RefreshActions()
+        {
+            bool selected = C<ComboBox>("FirmwareDevices").SelectedItem is FirmwareDevice;
+            foreach (var name in new[] { "FirmwareFind", "FirmwareChoose" }) C<Button>(name).IsEnabled = !busy;
+            C<Button>("FirmwareCheck").IsEnabled = !busy && selected && path != null;
+            bool erase = C<RadioButton>("FirmwareErase").IsChecked == true;
+            C<Button>("FirmwareStart").IsEnabled = !busy && !critical && manifest != null && selected &&
+                C<CheckBox>("FirmwareBackup").IsChecked == true && (!erase || C<TextBox>("FirmwareConfirm").Text == "СТЕРЕТЬ");
+            C<ComboBox>("FirmwareDevices").IsEnabled = !busy;
+            C<RadioButton>("FirmwareUpdate").IsEnabled = !busy;
+            C<RadioButton>("FirmwareErase").IsEnabled = !busy;
+            C<CheckBox>("FirmwareBackup").IsEnabled = !busy;
+            C<TextBox>("FirmwareConfirm").IsEnabled = !busy && erase;
         }
     }
 }
@@ -1484,15 +1602,11 @@ namespace IpaDesktop
             if (!startup && MessageBox.Show(w, "Обновить наш комплект инструментов для iPhone до " + release.tag_name + "? Предыдущий комплект будет сохранён для отката.", "Обновление инструментов", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
             await engine.InstallDeviceTools(release, ct);
         }
-        public async Task CheckGui(CancellationToken ct)
+        public Task CheckGui(CancellationToken ct)
         {
-            guiRelease = await GuiUpdater.Check(ct);
-            string text = guiRelease == null ? "Установлена актуальная версия " + GuiUpdater.CurrentVersion : "Доступна версия " + guiRelease.tag_name;
-            C<TextBlock>("GuiVersionStatus").Text = text;
-            C<Button>("InstallGuiUpdate").Content = guiRelease == null ? "Установить обновление" : "Обновить до " + guiRelease.tag_name;
-            C<TextBlock>("UpdateNotice").Text = guiRelease == null ? "" : text + " — вкладка «Настройки»";
-            C<TextBlock>("UpdateNotice").Visibility = guiRelease == null ? Visibility.Collapsed : Visibility.Visible;
-            Log(text);
+            ct.ThrowIfCancellationRequested();
+            C<TextBlock>("GuiVersionStatus").Text = "Firmware Preview: тестовые обновления доступны в артефактах ветки feature/ios-firmware.";
+            return Task.FromResult(0);
         }
     }
 }

@@ -169,15 +169,11 @@ namespace IpaDesktop
             if (!startup && MessageBox.Show(w, "Обновить наш комплект инструментов для iPhone до " + release.tag_name + "? Предыдущий комплект будет сохранён для отката.", "Обновление инструментов", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
             await engine.InstallDeviceTools(release, ct);
         }
-        public async Task CheckGui(CancellationToken ct)
+        public Task CheckGui(CancellationToken ct)
         {
-            guiRelease = await GuiUpdater.Check(ct);
-            string text = guiRelease == null ? "Установлена актуальная версия " + GuiUpdater.CurrentVersion : "Доступна версия " + guiRelease.tag_name;
-            C<TextBlock>("GuiVersionStatus").Text = text;
-            C<Button>("InstallGuiUpdate").Content = guiRelease == null ? "Установить обновление" : "Обновить до " + guiRelease.tag_name;
-            C<TextBlock>("UpdateNotice").Text = guiRelease == null ? "" : text + " — вкладка «Настройки»";
-            C<TextBlock>("UpdateNotice").Visibility = guiRelease == null ? Visibility.Collapsed : Visibility.Visible;
-            Log(text);
+            ct.ThrowIfCancellationRequested();
+            C<TextBlock>("GuiVersionStatus").Text = "Firmware Preview: тестовые обновления доступны в артефактах ветки feature/ios-firmware.";
+            return Task.FromResult(0);
         }
     }
 }

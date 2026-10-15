@@ -1,4 +1,4 @@
-<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Title="IPA Desktop · 0.2.1" Width="1160" Height="800" MinWidth="940" MinHeight="720" WindowStartupLocation="CenterScreen" Background="#10151F" Foreground="#EDF1F8" FontFamily="Segoe UI" FontSize="14" UseLayoutRounding="True" SnapsToDevicePixels="True">
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Title="IPA Desktop · 0.2.1 · Firmware Preview" Width="1160" Height="800" MinWidth="940" MinHeight="720" WindowStartupLocation="CenterScreen" Background="#10151F" Foreground="#EDF1F8" FontFamily="Segoe UI" FontSize="14" UseLayoutRounding="True" SnapsToDevicePixels="True">
   <Window.Resources>
     <!-- Общие состояния кнопок, полей, вкладок и таблиц. -->
     <Style TargetType="Button">
@@ -581,6 +581,31 @@
             </DataGrid>
           </Grid>
         </Grid>
+      </TabItem>
+      <TabItem Header="Прошивка iOS" x:Name="FirmwareTab">
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+          <StackPanel Margin="24">
+            <TextBlock Text="Прошивка iPhone · экспериментальная функция" FontSize="22" FontWeight="SemiBold"/>
+            <TextBlock Text="Первый запуск — только с отдельным тестовым iPhone. Подключите разблокированный телефон в обычном режиме и подтвердите доверие компьютеру." TextWrapping="Wrap" Foreground="#D7BC79" Margin="0,12,0,16"/>
+            <WrapPanel>
+              <Button x:Name="FirmwareFind" Content="Найти iPhone"/>
+              <ComboBox x:Name="FirmwareDevices" MinWidth="320" MaxWidth="540" Margin="8,0,0,0"/>
+            </WrapPanel>
+            <WrapPanel Margin="0,16,0,8">
+              <Button x:Name="FirmwareChoose" Content="Выбрать IPSW…"/>
+              <Button x:Name="FirmwareCheck" Content="Проверить совместимость" Margin="8,0,0,0"/>
+            </WrapPanel>
+            <TextBlock x:Name="FirmwarePath" Text="Официальная IPSW ещё не выбрана" TextWrapping="Wrap" Foreground="#9BACBF"/>
+            <RadioButton x:Name="FirmwareUpdate" IsChecked="True" Content="Обновить с сохранением данных" Foreground="#EDF1F8" GroupName="FirmwareMode" Margin="0,20,0,10"/>
+            <RadioButton x:Name="FirmwareErase" Content="Восстановить — удалить все данные" Foreground="#ECA0AA" GroupName="FirmwareMode"/>
+            <TextBlock x:Name="FirmwareInfo" Text="Выберите iPhone, IPSW и режим, затем проверьте совместимость." TextWrapping="Wrap" Foreground="#8CBAFF" Margin="0,16,0,16"/>
+            <CheckBox x:Name="FirmwareBackup" Content="Резервная копия сделана; понимаю риск потери данных" Foreground="#EDF1F8"/>
+            <TextBlock Text="Для восстановления со стиранием введите СТЕРЕТЬ:" Foreground="#9BACBF" Margin="0,12,0,6"/>
+            <TextBox x:Name="FirmwareConfirm" Width="220" HorizontalAlignment="Left"/>
+            <Button x:Name="FirmwareStart" Content="Начать прошивку…" HorizontalAlignment="Left" Margin="0,16,0,12"/>
+            <TextBlock Text="Во время прошивки отмена недоступна. Apple должна разрешить установку выбранной iOS. Эта функция не снимает Activation Lock. Телефоны, уже находящиеся в Recovery/DFU, в этой версии не выбираются." TextWrapping="Wrap" Foreground="#9BACBF"/>
+          </StackPanel>
+        </ScrollViewer>
       </TabItem>
     </TabControl>
     <StackPanel Grid.Row="3">

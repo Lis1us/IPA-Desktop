@@ -17,21 +17,28 @@ namespace IpaDesktop
         [return: MarshalAs(UnmanagedType.Bool)]
         static extern bool CreateHardLink(string newName, string existingName, IntPtr securityAttributes);
 
-        InstallationPackage(string source)
+        InstallationPackage(string source, string extension)
         {
             WorkingDirectory = Path.GetDirectoryName(Path.GetFullPath(source));
             string name = ".install-" + Guid.NewGuid().ToString("N");
             directory = Path.Combine(WorkingDirectory, name);
-            RelativePath = Path.Combine(name, "package.ipa");
+            RelativePath = Path.Combine(name, "package" + extension);
         }
 
         /// <summary>Предпочитает жёсткую ссылку без копирования больших IPA; на других ФС копирует с отменой.</summary>
         public static Task<InstallationPackage> CreateAsync(string source, CancellationToken ct)
         {
+            return CreateAsync(source, ct, ".ipa");
+        }
+
+        /// <summary>Отдельное расширение для IPSW; каталог создаётся с уникальным именем и принадлежит только этой операции.</summary>
+        public static Task<InstallationPackage> CreateAsync(string source, CancellationToken ct, string extension)
+        {
+            if (extension != ".ipa" && extension != ".ipsw") throw new ArgumentException("Unsupported extension.");
             return Task.Run(delegate
             {
                 ct.ThrowIfCancellationRequested();
-                var package = new InstallationPackage(source);
+                var package = new InstallationPackage(source, extension);
                 try
                 {
                     Directory.CreateDirectory(package.directory);
@@ -63,7 +70,7 @@ namespace IpaDesktop
             try
             {
                 File.Delete(Path.Combine(WorkingDirectory, RelativePath));
-                Directory.Delete(directory);
+                Directory.Delete(directory, true);
             }
             catch (IOException) { }
             catch (UnauthorizedAccessException) { }

@@ -1,0 +1,9 @@
+{
+  "libplist": "fe3dc34dc3484006e12b403f7ceb06f0ad40b6f4",
+  "libimobiledevice-glue": "10ddafa16458a012bcbd3e83a6ab36a032dc84d8",
+  "libusbmuxd": "93eb168bf6b07472d17781328c21df0c60300524",
+  "libtatsu": "e7d6ad13ef928aa609d0ccdfc586f7d6e8e049bf",
+  "libimobiledevice": "fa0f79190142bc309307967c058f89c1b36eb6b8",
+  "libirecovery": "93c117c29b1f6669bc4ceca8b84e1df06449fe33",
+  "idevicerestore": "4b3e847e1d9a1210049a9e3f1d1caa38650c6617"
+}

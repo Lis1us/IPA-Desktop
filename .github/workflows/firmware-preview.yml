@@ -1,0 +1,109 @@
+name: Firmware preview
+on:
+  push:
+    branches: [feature/ios-firmware]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: firmware-preview-branch
+  cancel-in-progress: true
+jobs:
+  gui:
+    runs-on: windows-2022
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify source snapshots
+        run: |
+          & powershell.exe -NoProfile -File Scripts/Sync-Sources.ps1 -Check
+          if($LASTEXITCODE -ne 0){throw 'Source snapshots differ'}
+      - name: Build GUI
+        shell: cmd
+        run: call Build.cmd < nul
+      - name: Verify existing features and firmware guards without a physical device
+        run: |
+          foreach($test in @('Verify','Verify-IpaMetadata','Verify-Updater','Verify-Design','Verify-Services','Verify-WorkflowFeatures','Verify-Firmware')){
+            & powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File "Tests/$test.ps1"
+            if($LASTEXITCODE -ne 0){throw "Failed: $test"}
+          }
+      - name: Package GUI
+        run: |
+          & powershell.exe -NoProfile -File Scripts/Package.ps1
+          if($LASTEXITCODE -ne 0){throw 'Packaging failed'}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: firmware-gui
+          path: |
+            IPA-Desktop-0.2.1-Windows.zip
+            Firmware-Preview.png
+          retention-days: 14
+  native:
+    runs-on: windows-2022
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            git make autoconf automake libtool
+            mingw-w64-x86_64-gcc mingw-w64-x86_64-pkgconf
+            mingw-w64-x86_64-openssl mingw-w64-x86_64-curl
+            mingw-w64-x86_64-libzip mingw-w64-x86_64-python
+            mingw-w64-x86_64-libusb
+      - name: Build pinned firmware tools and patched restore engine
+        shell: msys2 {0}
+        run: bash Tools/FirmwareTools/build.sh
+      - name: Verify native tools outside MSYS2, without connecting a device
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $env:PATH="$env:SystemRoot\System32;$env:SystemRoot"
+          $folder=Join-Path $PWD 'firmware-build/package/windows_amd64'
+          foreach($name in @('idevice_id','ideviceinfo','irecovery','idevicerestore')){
+            $help=& "$folder/$name.exe" --help 2>&1
+            if($LASTEXITCODE -ne 0 -or !$help){throw "$name help failed"}
+            if($name -eq 'idevicerestore' -and (($help -join [Environment]::NewLine) -notmatch '--ipa-desktop-update-only')){throw 'Strict update guard missing'}
+          }
+          $log=& "$folder/idevicerestore.exe" --no-input --ipa-desktop-update-only --erase firmware-build/package 2>&1
+          if($LASTEXITCODE -eq 0 -or ($log -join [Environment]::NewLine) -notmatch 'conflicting options for update-only'){throw 'Native engine accepted erase with update-only mode'}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: firmware-native
+          retention-days: 14
+          path: IPA-FirmwareTools-*.zip
+  package:
+    needs: [gui, native]
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: firmware-gui
+          path: artifacts/gui
+      - uses: actions/download-artifact@v4
+        with:
+          name: firmware-native
+          path: artifacts/native
+      - name: Combine isolated experimental bundle
+        shell: pwsh
+        run: |
+          Expand-Archive artifacts/gui/IPA-Desktop-0.2.1-Windows.zip preview
+          Expand-Archive artifacts/native/IPA-FirmwareTools-0.1.0-preview-Windows-x64.zip preview/FirmwareTools
+          Copy-Item Docs/FIRMWARE-PREVIEW.md preview/ПРОЧИТАЙТЕ-ПЕРЕД-ПРОШИВКОЙ.md
+          Copy-Item artifacts/native/IPA-FirmwareTools-0.1.0-preview-Sources.zip preview/FirmwareTools/
+          Compress-Archive preview/* IPA-Desktop-Firmware-Preview-Windows.zip
+          Get-FileHash IPA-Desktop-Firmware-Preview-Windows.zip -Algorithm SHA256 | Format-List | Out-File SHA256.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: IPA-Desktop-Firmware-Preview-Windows
+          retention-days: 14
+          path: |
+            IPA-Desktop-Firmware-Preview-Windows.zip
+            SHA256.txt
+            artifacts/gui/Firmware-Preview.png
