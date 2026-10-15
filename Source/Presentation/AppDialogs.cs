@@ -63,29 +63,5 @@ namespace IpaDesktop
                 Environment.NewLine + "Сборка: " + (row.Build ?? "не указана") +
                 Environment.NewLine + "Размер: " + row.Size);
         }
-        /// <summary>Временно переносит существующие настройки в диалог, сохраняя обработчики и namescope главного окна.</summary>
-        public static void Settings(Window owner, Panel host, UIElement content)
-        {
-            int index = host.Children.IndexOf(content);
-            host.Children.Remove(content);
-            var dialog = Create(owner, "Настройки IPA Desktop", 800, 680);
-            content.Visibility = Visibility.Visible;
-            var layout = new Grid();
-            layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            layout.RowDefinitions.Add(new RowDefinition());
-            var notice = new TextBlock { Margin = new Thickness(24, 12, 24, 0), TextWrapping = TextWrapping.Wrap, Foreground = Brushes.Salmon };
-            notice.SetBinding(TextBlock.TextProperty, new Binding("Text") { Source = owner.FindName("NoticeText") });
-            notice.SetBinding(TextBlock.ToolTipProperty, new Binding("ToolTip") { Source = owner.FindName("NoticeText") });
-            notice.SetBinding(TextBlock.VisibilityProperty, new Binding("Visibility") { Source = owner.FindName("OperationNotice") });
-            layout.Children.Add(notice); Grid.SetRow(content, 1); layout.Children.Add(content);
-            dialog.Content = layout;
-            try { dialog.ShowDialog(); }
-            finally
-            {
-                layout.Children.Remove(content); Grid.SetRow(content, 0);
-                dialog.Content = null; content.Visibility = Visibility.Collapsed;
-                host.Children.Insert(index, content);
-            }
-        }
     }
 }

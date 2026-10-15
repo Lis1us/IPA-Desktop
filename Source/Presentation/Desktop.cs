@@ -80,7 +80,6 @@ namespace IpaDesktop
             if (storage != null) storage.RefreshActions();
             C<Button>("NoticeRetry").IsEnabled = !busy && noticeRetry != null && lastReport != null && lastReport.Failed > 0 &&
                 (lastReport.Kind == "Скачивание" ? C<Button>("RetryDownloads").IsEnabled : C<Button>("RetryInstalls").IsEnabled);
-            C<Button>("OpenSettings").IsEnabled = !busy;
             C<Button>("ShowLastReport").IsEnabled = lastReport != null;
         }
         internal T C<T>(string name) where T : class
@@ -319,10 +318,6 @@ namespace IpaDesktop
             appSets = new AppSetsController(this, engine);
             StateView();
             RefreshFiles();
-            On("OpenSettings", delegate
-            {
-                AppDialogs.Settings(w, C<Grid>("SettingsHost"), C<ScrollViewer>("SettingsContent"));
-            });
             Action showReport = delegate
             {
                 if (lastReport != null) AppDialogs.ShowText(w.OwnedWindows.Cast<Window>().FirstOrDefault(x => x.IsActive) ?? w, "Итог операции", lastReport.Details);

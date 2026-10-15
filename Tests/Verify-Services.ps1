@@ -364,16 +364,12 @@ public static class InstallPathProbe {
    if($child -is [Windows.DependencyObject]){$found=FindNamed $child $name;if($found){return $found}}
   }
  }
- # Reparenting actual settings into a modal dialog must retain handlers and owner namescope.
- $window.Dispatcher.BeginInvoke([Action]{
-  $dialog=@($window.OwnedWindows|Where-Object Title -eq 'Настройки IPA Desktop')[0]
-  if(!$dialog){throw 'Settings dialog did not open'}
-  $window.FindName('SoundsEnabled').IsChecked=$true;Click 'SoundsEnabled'
-  $dialog.Close()
- })|Out-Null
- Click 'OpenSettings';Pump
+ # Inline settings retain persistence without a modal window.
+ $window.FindName('SettingsTab').IsSelected=$true;Pump
+ if(!$window.FindName('SettingsContent').IsVisible -or $window.OwnedWindows.Count -ne 0){throw 'Settings must remain in the main window'}
+ $window.FindName('SoundsEnabled').IsChecked=$true;Click 'SoundsEnabled';Pump
  $checkSettings=New-Object IpaDesktop.Engine($temp)
- if(!$checkSettings.Settings.SoundsEnabled -or $window.FindName('SettingsContent').Visibility -ne 'Collapsed' -or $window.FindName('SettingsContent').Parent -ne $window.FindName('SettingsHost')){throw 'Settings dialog lost persistence or parent after close'}
+ if(!$checkSettings.Settings.SoundsEnabled){throw 'Inline sound setting did not persist'}
  $engine.Settings.SoundsEnabled=$false;$engine.Save()
  # Cancel an edited draft; then save a rename and removal through the actual editor buttons.
  $editA=New-Object IpaDesktop.AppRow;$editA.ID='700';$editA.Name='Editor A'
@@ -394,7 +390,7 @@ public static class InstallPathProbe {
  $saved=$script:editor.ShowDialog()
  $edited=@($engine.AppSets.Load()|Where-Object Name -eq 'Renamed editor')
  if(!$saved -or $edited.Count -ne 1 -or $edited[0].Apps.Count -ne 1 -or $edited[0].Apps[0].ID -ne '701'){throw 'Editor did not save atomic rename and removal'}
- Write-Host 'PASS: visible per-app errors, tab persistence, dismissal, banner retry, IPA/device dialogs, settings reparent/persistence and set editor save/cancel'
+ Write-Host 'PASS: visible per-app errors, tab persistence, dismissal, banner retry, IPA/device dialogs, inline settings persistence and set editor save/cancel'
  Write-Host 'PASS: simultaneous sets, overlapping IDs, version preservation, repeated additions, persistence and independent deletion'
  Write-Host 'PASS: editable inline set picker, additive deduplication, cross-tab refresh, both save buttons after completed download and explicit clear'
  Write-Host 'PASS: retry snapshot/version isolation, queue progress, saved set UI and storage UI'

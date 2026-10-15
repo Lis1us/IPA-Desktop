@@ -183,21 +183,17 @@ try {
  $editor=[IpaDesktop.AppSetEditor]::Create($window,'Базовый набор',[IpaDesktop.AppRow[]]@($presetApp),[Action[string,Collections.Generic.IEnumerable[IpaDesktop.AppRow]]]{param($name,$apps)})
  $editor.Show()
  try {EmitDialogPreview $editor 'IPA_EDITOR_PREVIEW'}finally{$editor.Close()}
- # The hidden settings content must move into a real themed dialog and return afterward.
- $window.Dispatcher.BeginInvoke([Action]{
-  $settings=@($window.OwnedWindows|Where-Object Title -eq 'Настройки IPA Desktop')[0]
-  if(!$settings){throw 'Settings dialog missing'}
-  EmitDialogPreview $settings 'IPA_SETTINGS_PREVIEW';$settings.Close()
- })|Out-Null
- [IpaDesktop.AppDialogs]::Settings($window,$window.FindName('SettingsHost'),$window.FindName('SettingsContent'))
- if($window.FindName('SettingsContent').Parent -ne $window.FindName('SettingsHost')){throw 'Settings content was not restored'}
+ # Settings stay visible in their tab without opening an owned window.
+ $window.FindName('SettingsTab').IsSelected=$true;$window.UpdateLayout()
+ if(!$window.FindName('SettingsContent').IsVisible -or $window.FindName('SettingsContent').ActualHeight -lt 100){throw 'Inline settings are not visible'}
+ EmitDialogPreview $window 'IPA_SETTINGS_PREVIEW'
  $tabs.SelectedIndex=0;$window.Width=940;$window.Height=720
  $window.FindName('OperationNotice').Visibility='Visible'
  $window.FindName('NoticeText').Text='Скачивание: есть ошибки · готово 2/3 · MAX: не удалось открыть IPA'
  $window.Dispatcher.Invoke([Action]{},[Windows.Threading.DispatcherPriority]::ApplicationIdle);$window.UpdateLayout()
  if($window.FindName('Apps').ActualHeight -lt 80){throw 'Visible error banner collapsed search table at minimum size'}
  EmitDialogPreview $window 'IPA_NOTICE_PREVIEW'
- Write-Host 'PASS: IPA, set editor and settings dialog layouts; restored settings host; persistent banner at minimum window size'
+ Write-Host 'PASS: IPA, set editor and inline settings layouts; persistent banner at minimum window size'
  if($minimumHeight -lt 80){throw 'Application table collapsed at minimum size'}
  Write-Host 'PASS: all tab templates, dark combo popup, minimum window layout, icon and DWM initialization'
 }finally{$window.Close()}
