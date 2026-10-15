@@ -11,6 +11,12 @@ using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using IpaDesktop;
+public static class DesktopContract {
+ public static void Error(Desktop view, string message) {
+  typeof(Desktop).GetMethod("Error", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+   .Invoke(view, new object[]{new Exception(message)});
+ }
+}
 public sealed class InstalledAppleSupportProbe : IAppleSupportProbe
 {
     public AppleSupportSnapshot Read()
@@ -338,7 +344,7 @@ public static class InstallPathProbe {
  Click 'DismissNotice';Pump
  if($window.FindName('OperationNotice').Visibility -ne 'Collapsed' -or !$window.FindName('ShowLastReport').IsEnabled){throw 'Dismissing notice lost last report'}
  # Root error handling is nonmodal and visible even outside the journal.
- $desktop.GetType().GetMethod('Error',[Reflection.BindingFlags]'Instance,NonPublic').Invoke($desktop,@((New-Object Exception('generic fixture error'))))|Out-Null
+ [DesktopContract]::Error($desktop,'generic fixture error')
  if(!$window.FindName('NoticeText').Text.Contains('generic fixture error') -or $window.FindName('NoticeRetry').Visibility -ne 'Collapsed'){throw 'Generic error was hidden or advertised an invalid retry'}
  # Run a new failed batch, then retry through the banner itself.
  $tabs.SelectedIndex=0;Click 'Download';WaitIdle

@@ -276,7 +276,17 @@
             <TextBlock Text="0.2.0" Foreground="#AFCDF7" FontSize="12"/>
           </Border>
         </StackPanel>
-        <TextBlock Text="Приложения для iPhone — поиск, загрузка и установка" Foreground="#9BACBF" Margin="0,6,0,20"/>
+        <TextBlock Text="Приложения для iPhone — поиск, загрузка и установка" Foreground="#9BACBF" Margin="0,6,0,20">
+          <TextBlock.Style>
+            <Style TargetType="TextBlock">
+              <Style.Triggers>
+                <DataTrigger Binding="{Binding Visibility, ElementName=OperationNotice}" Value="Visible">
+                  <Setter Property="Visibility" Value="Collapsed"/>
+                </DataTrigger>
+              </Style.Triggers>
+            </Style>
+          </TextBlock.Style>
+        </TextBlock>
       </StackPanel>
       <StackPanel Grid.Column="1" HorizontalAlignment="Right">
         <TextBlock x:Name="EngineVersion" Text="Движок не установлен" Foreground="#78B7FF" HorizontalAlignment="Right"/>

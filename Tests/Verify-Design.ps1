@@ -195,7 +195,7 @@ try {
  $window.FindName('OperationNotice').Visibility='Visible'
  $window.FindName('NoticeText').Text='Скачивание: есть ошибки · готово 2/3 · MAX: не удалось открыть IPA'
  $window.Dispatcher.Invoke([Action]{},[Windows.Threading.DispatcherPriority]::ApplicationIdle);$window.UpdateLayout()
- if($window.FindName('Apps').ActualHeight -lt 30){throw 'Visible error banner collapsed search table at minimum size'}
+ if($window.FindName('Apps').ActualHeight -lt 80){throw 'Visible error banner collapsed search table at minimum size'}
  EmitDialogPreview $window 'IPA_NOTICE_PREVIEW'
  Write-Host 'PASS: IPA, set editor and settings dialog layouts; restored settings host; persistent banner at minimum window size'
  if($minimumHeight -lt 80){throw 'Application table collapsed at minimum size'}
