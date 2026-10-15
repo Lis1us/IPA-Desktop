@@ -1,4 +1,4 @@
-<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Title="IPA Desktop · 0.1.25" Width="1160" Height="800" MinWidth="940" MinHeight="720" WindowStartupLocation="CenterScreen" Background="#10151F" Foreground="#EDF1F8" FontFamily="Segoe UI" FontSize="14" UseLayoutRounding="True" SnapsToDevicePixels="True">
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Title="IPA Desktop · 0.1.26" Width="1160" Height="800" MinWidth="940" MinHeight="720" WindowStartupLocation="CenterScreen" Background="#10151F" Foreground="#EDF1F8" FontFamily="Segoe UI" FontSize="14" UseLayoutRounding="True" SnapsToDevicePixels="True">
   <Window.Resources>
     <!-- Общие состояния кнопок, полей, вкладок и таблиц. -->
     <Style TargetType="Button">
@@ -246,7 +246,7 @@
           <Image x:Name="BrandIcon" Width="46" Height="46" Margin="0,0,12,0"/>
           <TextBlock Text="IPA Desktop" FontSize="30" FontWeight="SemiBold" VerticalAlignment="Center"/>
           <Border Background="#23354E" CornerRadius="6" Padding="8,4" Margin="12,0,0,0" VerticalAlignment="Center">
-            <TextBlock Text="0.1.25" Foreground="#AFCDF7" FontSize="12"/>
+            <TextBlock Text="0.1.26" Foreground="#AFCDF7" FontSize="12"/>
           </Border>
         </StackPanel>
         <TextBlock Text="Приложения для iPhone — поиск, загрузка и установка" Foreground="#9BACBF" Margin="0,6,0,20"/>
@@ -305,7 +305,7 @@
             <Button x:Name="Versions" Content="Список версий"/>
             <ComboBox x:Name="VersionList" Margin="0,0,8,8"/>
             <Button x:Name="VersionInfo" Content="Сведения"/>
-            <Button x:Name="AddChosen" Content="В выбранное" ToolTip="Добавить выделенные строки или обновить выбранную версию. Можно также добавлять одним кликом по строке."/>
+            <Button x:Name="AddChosen" Content="В выбранное" ToolTip="Добавить выделенные строки или обновить выбранную версию. Можно также добавлять двойным кликом по строке."/>
             <Button x:Name="Download" Content="Скачать (0)" Background="#3878E5"/>
           </WrapPanel>
           <Border Grid.Row="3" Background="#101A29" BorderBrush="#2B3E58" BorderThickness="1" CornerRadius="8" Padding="10,6">
@@ -434,7 +434,7 @@
             <Border Background="#1C293B" BorderBrush="#34445C" BorderThickness="1" CornerRadius="10" Padding="20" Margin="0,0,0,24">
               <StackPanel>
                 <TextBlock Text="IPA Desktop" FontSize="22" FontWeight="SemiBold"/>
-                <TextBlock x:Name="GuiVersionStatus" Text="Установлена версия 0.1.25" Foreground="#8CBAFF" Margin="0,8,0,14"/>
+                <TextBlock x:Name="GuiVersionStatus" Text="Установлена версия 0.1.26" Foreground="#8CBAFF" Margin="0,8,0,14"/>
                 <CheckBox x:Name="CheckGuiUpdates" Content="Проверять новые версии программы при запуске" Foreground="#EDF1F8" Margin="0,0,0,16"/>
                 <WrapPanel>
                   <Button x:Name="CheckGuiUpdate" Content="Проверить версию"/>
@@ -457,7 +457,7 @@
               <StackPanel>
                 <TextBlock Text="Инструменты для iPhone" FontSize="22" FontWeight="SemiBold"/>
                 <TextBlock x:Name="DeviceToolsVersion" Text="Комплект не установлен" Foreground="#8CBAFF" Margin="0,8,0,12"/>
-                <TextBlock Text="Источник: Lis1us / IPA-Desktop · наша сборка libimobiledevice и ideviceinstaller" Foreground="#9BACBF" TextWrapping="Wrap" Margin="0,0,0,16"/>
+                <TextBlock Text="Источник: iamdarkls / IPA-Desktop · наша сборка libimobiledevice и ideviceinstaller" Foreground="#9BACBF" TextWrapping="Wrap" Margin="0,0,0,16"/>
                 <CheckBox x:Name="AutoUpdateDeviceTools" Content="Проверять и обновлять инструменты при запуске" Foreground="#EDF1F8" Margin="0,0,0,16"/>
                 <WrapPanel>
                   <Button x:Name="CheckDeviceUpdate" Content="Проверить инструменты" Background="#3878E5"/>

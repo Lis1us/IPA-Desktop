@@ -175,7 +175,7 @@ namespace IpaDesktop
             string text = guiRelease == null ? "Установлена актуальная версия " + GuiUpdater.CurrentVersion : "Доступна версия " + guiRelease.tag_name;
             C<TextBlock>("GuiVersionStatus").Text = text;
             C<Button>("InstallGuiUpdate").Content = guiRelease == null ? "Установить обновление" : "Обновить до " + guiRelease.tag_name;
-            C<TextBlock>("UpdateNotice").Text = guiRelease == null ? "" : text + " — вкладка «Обновления»";
+            C<TextBlock>("UpdateNotice").Text = guiRelease == null ? "" : text + " — вкладка «Настройки»";
             C<TextBlock>("UpdateNotice").Visibility = guiRelease == null ? Visibility.Collapsed : Visibility.Visible;
             Log(text);
         }
