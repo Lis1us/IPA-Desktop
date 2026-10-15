@@ -1253,7 +1253,7 @@ namespace IpaDesktop
                 Run("Диагностика iPhone…", async ct =>
                 {
                     var report = await engine.PhoneDiagnostics.ReadAsync(device, ct, text => dialog.Status.Text = text);
-                    foreach (var value in report.Values) if (value.Sensitive) view.RegisterPrivate(value.Value);
+                    foreach (var value in report.Values) if (value.Sensitive && value.Name != "Имя iPhone" && value.Value != "Недоступно") view.RegisterPrivate(value.Value);
                     view.RegisterPrivate(device.ID);
                     dialog.Show(report);
                 });

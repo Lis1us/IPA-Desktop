@@ -1,4 +1,4 @@
-> **Экспериментальная ветка прошивки iPhone.** Описание и ограничения: [Docs/FIRMWARE-PREVIEW.md](Docs/FIRMWARE-PREVIEW.md). Стабильная версия находится в main.
+> **Экспериментальная ветка прошивки и диагностики iPhone.** Описание и ограничения: [Docs/FIRMWARE-PREVIEW.md](Docs/FIRMWARE-PREVIEW.md). Стабильная версия находится в main.
 
 <p align="center">
   <img src="Assets/App.svg" width="88" alt="Иконка IPA Desktop">
