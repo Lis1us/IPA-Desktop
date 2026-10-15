@@ -174,7 +174,7 @@ namespace IpaDesktop
         void RefreshInstallChosen()
         {
             C<ItemsControl>("ChosenFiles").ItemsSource = installChosen.Snapshot();
-            C<TextBlock>("InstallCount").Text = installChosen.Count == 0 ? "ЛКМ — выбрать для установки или удаления" : "Выбрано IPA: " + installChosen.Count;
+            C<TextBlock>("InstallCount").Text = installChosen.Count == 0 ? "Двойной клик — выбрать IPA" : "Выбрано IPA: " + installChosen.Count;
             C<Button>("InstallFiles").Content = "Установить (" + installChosen.Count + ")";
             ApplyActions();
         }

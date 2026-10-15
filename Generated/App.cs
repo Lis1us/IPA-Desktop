@@ -727,7 +727,7 @@ namespace IpaDesktop
         void RefreshInstallChosen()
         {
             C<ItemsControl>("ChosenFiles").ItemsSource = installChosen.Snapshot();
-            C<TextBlock>("InstallCount").Text = installChosen.Count == 0 ? "ЛКМ — выбрать для установки или удаления" : "Выбрано IPA: " + installChosen.Count;
+            C<TextBlock>("InstallCount").Text = installChosen.Count == 0 ? "Двойной клик — выбрать IPA" : "Выбрано IPA: " + installChosen.Count;
             C<Button>("InstallFiles").Content = "Установить (" + installChosen.Count + ")";
             ApplyActions();
         }
@@ -796,26 +796,22 @@ namespace IpaDesktop
 // Presentation/RowClickSelection.cs
 namespace IpaDesktop
 {
-    /// <summary>Добавляет строку одним нажатием ЛКМ, не перехватывая прокрутку и другие элементы таблицы.</summary>
+    /// <summary>Добавляет строку двойным левым кликом, оставляя одиночный клик для обычного выделения.</summary>
     public static class RowClickSelection
     {
-        /// <summary>Обрабатывает клик по строке таблицы, исключая вложенные кнопки и полосы прокрутки.</summary>
+        /// <summary>Использует системное событие двойного клика WPF и исключает вложенные кнопки.</summary>
         public static void Attach(DataGrid grid, Action<object> add)
         {
-            object pressed = null;
-            Point origin = new Point();
-            grid.AddHandler(UIElement.PreviewMouseLeftButtonDownEvent, new System.Windows.Input.MouseButtonEventHandler(delegate(object sender, System.Windows.Input.MouseButtonEventArgs e)
+            grid.AddHandler(Control.MouseDoubleClickEvent, new System.Windows.Input.MouseButtonEventHandler(delegate(object sender, System.Windows.Input.MouseButtonEventArgs e)
             {
-                var row = ItemsControl.ContainerFromElement(grid, e.OriginalSource as DependencyObject) as DataGridRow;
-                pressed = row == null ? null : row.Item;
-                origin = e.GetPosition(grid);
-            }), true);
-            grid.AddHandler(UIElement.PreviewMouseLeftButtonUpEvent, new System.Windows.Input.MouseButtonEventHandler(delegate(object sender, System.Windows.Input.MouseButtonEventArgs e)
-            {
-                var row = ItemsControl.ContainerFromElement(grid, e.OriginalSource as DependencyObject) as DataGridRow;
-                var distance = e.GetPosition(grid) - origin;
-                if (row != null && Object.ReferenceEquals(pressed, row.Item) && Math.Abs(distance.X) < SystemParameters.MinimumHorizontalDragDistance && Math.Abs(distance.Y) < SystemParameters.MinimumVerticalDragDistance) add(row.Item);
-                pressed = null;
+                if (e.ChangedButton != System.Windows.Input.MouseButton.Left) return;
+                var source = e.OriginalSource as DependencyObject;
+                var row = ItemsControl.ContainerFromElement(grid, source) as DataGridRow;
+                if (row == null) return;
+                // Двойной клик по кнопке внутри строки не должен добавлять саму строку.
+                for (var node = source; node != null && node != row; node = node is System.Windows.Media.Visual ? System.Windows.Media.VisualTreeHelper.GetParent(node) : LogicalTreeHelper.GetParent(node))
+                    if (node is System.Windows.Controls.Primitives.ButtonBase) return;
+                add(row.Item);
             }), true);
         }
     }

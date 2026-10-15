@@ -64,7 +64,13 @@ try {
    $mouse.RoutedEvent=$eventId;$mouse.Source=$row
    $grid.RaiseEvent($mouse)
   }
-  if(![object]::ReferenceEquals($script:clickedItem,$grid.Items[0])){throw 'Left click did not add the correct data row'}
+  if($script:clickedItem){throw 'Single click unexpectedly added an application'}
+  $double=New-Object Windows.Input.MouseButtonEventArgs([Windows.Input.Mouse]::PrimaryDevice,0,[Windows.Input.MouseButton]::Right)
+  $double.RoutedEvent=[Windows.Controls.Control]::MouseDoubleClickEvent;$double.Source=$row;$grid.RaiseEvent($double)
+  if($script:clickedItem){throw 'Right double click unexpectedly added an application'}
+  $double=New-Object Windows.Input.MouseButtonEventArgs([Windows.Input.Mouse]::PrimaryDevice,0,[Windows.Input.MouseButton]::Left)
+  $double.RoutedEvent=[Windows.Controls.Control]::MouseDoubleClickEvent;$double.Source=$row;$grid.RaiseEvent($double)
+  if(![object]::ReferenceEquals($script:clickedItem,$grid.Items[0])){throw 'Double click did not add the correct data row'}
  }
  function FindButton($node) {
   if($node -is [Windows.Controls.Button] -and $node.Tag){return $node}
@@ -110,7 +116,7 @@ try {
  $window.FindName('DeviceList').ItemsSource=[IpaDesktop.DeviceRow[]]@($device)
  $window.FindName('DeviceList').SelectedIndex=0
  if($window.FindName('DeviceList').SelectedItem.ID -ne $device.ID -or $window.FindName('DeviceList').DisplayMemberPath -ne 'Name'){throw 'Named device selection lost its UDID'}
- Write-Host 'PASS: routed left-click selection on search and local IPA grids'
+ Write-Host 'PASS: single-click exclusion and routed double-click selection on both grids'
  $tabs.SelectedIndex=0
  $window.Width=940;$window.Height=720;$window.Dispatcher.Invoke([Action]{},[Windows.Threading.DispatcherPriority]::ApplicationIdle);$window.UpdateLayout()
  Write-Host ('Minimum layout: '+$window.FindName('Apps').ActualWidth+' x '+$window.FindName('Apps').ActualHeight)

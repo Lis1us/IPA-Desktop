@@ -178,7 +178,7 @@ public static class InstallPathProbe {
    $found=FindRemoveButton ([Windows.Media.VisualTreeHelper]::GetChild($node,$i));if($found){return $found}
   }
  }
- function ClickRow($grid,$index=0) {
+ function ClickRow($grid,$index=0,$doubleClick=$true) {
   $grid.SelectedItems.Clear();$grid.SelectedIndex=$index
   $grid.ScrollIntoView($grid.Items[$index]);Pump
   $row=$grid.ItemContainerGenerator.ContainerFromIndex($index)
@@ -187,12 +187,18 @@ public static class InstallPathProbe {
    $mouse=New-Object Windows.Input.MouseButtonEventArgs([Windows.Input.Mouse]::PrimaryDevice,0,[Windows.Input.MouseButton]::Left)
    $mouse.RoutedEvent=$event;$mouse.Source=$row;$grid.RaiseEvent($mouse)
   }
+  if($doubleClick) {
+   $double=New-Object Windows.Input.MouseButtonEventArgs([Windows.Input.Mouse]::PrimaryDevice,0,[Windows.Input.MouseButton]::Left)
+   $double.RoutedEvent=[Windows.Controls.Control]::MouseDoubleClickEvent;$double.Source=$row;$grid.RaiseEvent($double)
+  }
   Pump
  }
  Pump
  $tabs=FindTabs $window
  $window.FindName('Query').Text='123';Click 'Search';WaitIdle
  if($window.FindName('Apps').Items.Count -ne 1){throw 'Direct-ID search changed'}
+ ClickRow ($window.FindName('Apps')) 0 $false
+ if($window.FindName('ChosenApps').Items.Count -ne 0){throw 'Search single click added a row'}
  ClickRow ($window.FindName('Apps'))
  if($window.FindName('ChosenApps').Items.Count -ne 1){throw 'Search click selection failed'}
  $window.FindName('Query').Text='';Pump
@@ -203,12 +209,14 @@ public static class InstallPathProbe {
  $tabs.SelectedIndex=1;Pump
  $clock=[Diagnostics.Stopwatch]::StartNew()
  while($window.FindName('Files').Items.Count -eq 0 -and $clock.Elapsed.TotalSeconds -lt 5){Pump;[Threading.Thread]::Sleep(30)}
+ ClickRow ($window.FindName('Files')) 0 $false
+ if($window.FindName('ChosenFiles').Items.Count -ne 0){throw 'File single click added a row'}
  ClickRow ($window.FindName('Files'))
  if($window.FindName('ChosenFiles').Items.Count -ne 1){throw 'IPA click selection failed'}
  $remove=FindRemoveButton ($window.FindName('ChosenFiles'))
  $remove.RaiseEvent((New-Object Windows.RoutedEventArgs([Windows.Controls.Button]::ClickEvent,$remove)));Pump
  if($window.FindName('ChosenFiles').Items.Count -ne 0){throw 'IPA remove button failed'}
- # Two independent plain clicks build the action queue even though only one table row is selected.
+ # Two independent double clicks build the action queue even though only one table row is selected.
  ClickRow ($window.FindName('Files')) 0
  ClickRow ($window.FindName('Files')) 1
  if($window.FindName('ChosenFiles').Items.Count -ne 2 -or $window.FindName('Files').SelectedItems.Count -ne 1 -or !$window.FindName('DeleteFiles').IsEnabled -or !$window.FindName('DeleteFiles').Content.Contains('(2)')){throw 'Delete action still depends on Ctrl/table multi-selection'}
@@ -224,7 +232,7 @@ public static class InstallPathProbe {
  $window.FindName('SoundsEnabled').IsChecked=$false;Click 'SoundsEnabled';Pump
  $soundReload=New-Object IpaDesktop.Engine($temp)
  if($soundReload.Settings.SoundsEnabled){throw 'Sound checkbox did not persist disabled preference'}
- Write-Host 'PASS: plain-click IPA action queue, bottom delete placement, empty-queue guard and sound checkbox persistence'
+ Write-Host 'PASS: double-click IPA action queue, bottom delete placement, empty-queue guard and sound checkbox persistence'
  if($window.FindName('Devices').Background.Color.ToString() -ne '#FF16704C'){throw 'Initial device-search color changed'}
  Click 'CheckAppleSupport';WaitIdle
  if(!$window.FindName('AppleSupportStatus').Text.Contains('Apple') -or $window.FindName('AppleSupportStatus').Foreground.Color.ToString() -ne '#FF81D4AD'){throw 'Apple support check did not render the running state'}
