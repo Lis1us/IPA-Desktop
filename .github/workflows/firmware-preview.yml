@@ -5,6 +5,7 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+  actions: read
 concurrency:
   group: firmware-preview-branch
   cancel-in-progress: true
@@ -26,7 +27,7 @@ jobs:
         run: call Build.cmd < nul
       - name: Verify existing features and firmware guards without a physical device
         run: |
-          foreach($test in @('Verify','Verify-IpaMetadata','Verify-Updater','Verify-Design','Verify-Services','Verify-WorkflowFeatures','Verify-Firmware')){
+          foreach($test in @('Verify','Verify-IpaMetadata','Verify-Updater','Verify-Design','Verify-Services','Verify-WorkflowFeatures','Verify-Firmware','Verify-FirmwareCatalog')){
             & powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File "Tests/$test.ps1"
             if($LASTEXITCODE -ne 0){throw "Failed: $test"}
           }
@@ -46,7 +47,29 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+      - name: Check whether native sources match the verified bundle
+        id: native-source
+        shell: pwsh
+        run: |
+          git fetch --no-tags --depth=1 origin f266bdc8a1cea716e0a8643fd2644914e90d09f9
+          if($LASTEXITCODE -eq 0){
+            $previous=git rev-parse 'f266bdc8a1cea716e0a8643fd2644914e90d09f9:Tools/FirmwareTools'
+            $current=git rev-parse 'HEAD:Tools/FirmwareTools'
+            if($previous -eq $current){"reuse=true" >> $env:GITHUB_OUTPUT}
+          }
+          $global:LASTEXITCODE=0
+      - uses: actions/download-artifact@v4
+        id: reuse
+        if: steps.native-source.outputs.reuse == 'true'
+        continue-on-error: true
+        with:
+          name: firmware-native
+          run-id: 38799063817
+          github-token: ${{ github.token }}
+          path: .
       - uses: msys2/setup-msys2@v2
+        if: steps.reuse.outcome != 'success'
+
         with:
           msystem: MINGW64
           update: true
@@ -57,6 +80,7 @@ jobs:
             mingw-w64-x86_64-libzip mingw-w64-x86_64-python
             mingw-w64-x86_64-libusb
       - name: Build pinned firmware tools and patched restore engine
+        if: steps.reuse.outcome != 'success'
         shell: msys2 {0}
         run: bash Tools/FirmwareTools/build.sh
       - name: Verify native tools outside MSYS2, without connecting a device
@@ -64,6 +88,14 @@ jobs:
         run: |
           $ErrorActionPreference='Stop'
           $env:PATH="$env:SystemRoot\System32;$env:SystemRoot"
+          if(!(Test-Path firmware-build/package)){
+            Expand-Archive IPA-FirmwareTools-0.1.0-preview-Windows-x64.zip firmware-build/package
+          }
+          $manifest=Get-Content firmware-build/package/sha256.json -Raw | ConvertFrom-Json
+          foreach($entry in $manifest.PSObject.Properties){
+            $file=Join-Path (Join-Path $PWD 'firmware-build/package') $entry.Name
+            if((Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash -ne $entry.Value){throw 'Firmware bundle hash mismatch'}
+          }
           $folder=Join-Path $PWD 'firmware-build/package/windows_amd64'
           foreach($name in @('idevice_id','ideviceinfo','irecovery','idevicerestore')){
             $help=& "$folder/$name.exe" --help 2>&1

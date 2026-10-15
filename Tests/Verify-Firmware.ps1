@@ -97,6 +97,7 @@ try{
  $window=$desktop.Window
  try{
   $window.Show();$window.FindName('FirmwareTab').IsSelected=$true;$window.UpdateLayout()
+  if(!$window.FindName('FirmwareSignedOnly').IsChecked -or !$window.FindName('FirmwareLoadModels').IsEnabled){throw 'Catalog is unavailable or unsigned firmware shown by default'}
   if($window.FindName('FirmwareStart').IsEnabled){throw 'Restore must not be enabled before validation and confirmation'}
   if(!$window.FindName('FirmwareChoose').IsEnabled -or !$window.FindName('FirmwareUpdate').IsChecked){throw 'Firmware tab unavailable or erase selected by default'}
   $method=[IpaDesktop.Desktop].GetMethod('SetFirmwareCritical',[Reflection.BindingFlags]'Instance,NonPublic')
