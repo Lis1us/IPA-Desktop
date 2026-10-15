@@ -160,6 +160,23 @@ public static class BatchContractCheck {
  [BatchContractCheck]::Verify()
  Write-Host 'PASS: completion sound policy and unavailable audio device'
  Write-Host 'PASS: atomic write failure, all-or-nothing set migration, batch error continuation and cancellation'
+ # Reports preserve full failures and distinguish success, failure and cancellation.
+ $operation=New-Object IpaDesktop.OperationReport;$operation.Kind='Установка';$operation.Total=3
+ $operation.Add('MAX',$null)
+ $operation.Add('Telegram',(New-Object Exception('ERROR: ApplicationVerificationFailed')))
+ Assert ($operation.Succeeded -eq 1 -and $operation.Failed -eq 1 -and $operation.Details.Contains('ApplicationVerificationFailed') -and $operation.Items[1].ShortError.Contains('проверку')) 'Operation report lost full or short failure'
+ $operation.Canceled=$true
+ Assert ($operation.Summary.Contains('отменено') -and $operation.Details.Contains('1')) 'Canceled operation report lost remaining items'
+ $setOne=New-Object IpaDesktop.AppRow;$setOne.ID='900';$setOne.Name='Update fixture'
+ $engine.AppSets.SaveApps('Rename source',[IpaDesktop.AppRow[]]@($setOne))
+ $engine.AppSets.SaveApps('Existing target',[IpaDesktop.AppRow[]]@($setOne))
+ $before=[IO.File]::ReadAllText((Join-Path $temp 'AppSets.json'));$rejected=$false
+ try{$engine.AppSets.Update('Rename source','Existing target',[IpaDesktop.AppRow[]]@($setOne))}catch{$rejected=$true}
+ Assert ($rejected -and [IO.File]::ReadAllText((Join-Path $temp 'AppSets.json')) -eq $before) 'Set rename collision damaged config'
+ $engine.AppSets.Update('Rename source','New name',[IpaDesktop.AppRow[]]@($setOne))
+ $sets=$engine.AppSets.Load()
+ Assert (@($sets|Where-Object Name -eq 'New name').Count -eq 1 -and @($sets|Where-Object Name -eq 'Rename source').Count -eq 0) 'Atomic set rename did not replace original'
+ Write-Host 'PASS: report success/failure/cancel and atomic set rename collision handling'
  $progress=New-Object IpaDesktop.QueueProgress
  $progress.Begin('Скачивание',2,3,'Example')
  Assert ($progress.Feed('PROGRESS:50')) 'Machine-readable progress was ignored'

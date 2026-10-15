@@ -45,6 +45,18 @@ namespace IpaDesktop
             sets.Add(set);
             Write(sets);
         }
+        /// <summary>Атомарно меняет имя и состав; конфликт имени не перезаписывает другой набор.</summary>
+        public void Update(string originalName, string name, IEnumerable<AppRow> apps)
+        {
+            var updated = new AppSet { Name = (name ?? "").Trim(), Apps = AppSetRules.UniqueApps(apps) };
+            AppSetRules.Validate(updated);
+            var sets = Load();
+            var original = sets.FirstOrDefault(x => String.Equals(x.Name, originalName, StringComparison.OrdinalIgnoreCase));
+            if (original == null) throw new IOException("Набор уже удалён. Обновите список.");
+            if (sets.Any(x => !Object.ReferenceEquals(x, original) && String.Equals(x.Name, updated.Name, StringComparison.OrdinalIgnoreCase)))
+                throw new IOException("Набор с таким именем уже существует.");
+            sets.Remove(original); sets.Add(updated); Write(sets);
+        }
         /// <summary>Дополняет именованный набор без повторов по ID, сохраняя ранее добавленные приложения.</summary>
         public void AddApps(string name, IEnumerable<AppRow> apps)
         {

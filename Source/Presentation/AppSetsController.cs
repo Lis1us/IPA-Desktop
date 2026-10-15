@@ -14,6 +14,20 @@ namespace IpaDesktop
             C<ListBox>("AppSets").SelectionChanged += delegate { Preview(); ApplyActions(); };
             On("AddToSet", delegate { Save(C<ComboBox>("SearchSet").Text, "SearchSetStatus"); });
             On("SaveSet", delegate { Save(C<TextBox>("SetName").Text, "SetStatus"); });
+            On("EditSet", delegate
+            {
+                var selected = Selected();
+                if (selected.Count != 1) return;
+                var original = selected[0];
+                Work("Открытие набора…", async delegate(CancellationToken ct)
+                {
+                    var apps = await Task.Run(delegate { ct.ThrowIfCancellationRequested(); return engine.AppSets.ResolveApps(original); }, ct);
+                    ct.ThrowIfCancellationRequested();
+                    var editor = AppSetEditor.Create(w, original.Name, apps,
+                        delegate(string name, IEnumerable<AppRow> rows) { engine.AppSets.Update(original.Name, name, rows); });
+                    if (editor.ShowDialog() == true) RefreshSets();
+                });
+            });
             On("DeleteSet", DeleteSelected);
             On("UseSet", UseSelected);
             RefreshSets();
@@ -33,7 +47,7 @@ namespace IpaDesktop
                 C<TextBlock>(status).Text = "Набор «" + name + "» сохранён. Повторы по ID исключены.";
                 view.RegisterPrivate(name);
             }
-            catch (Exception e) { C<TextBlock>(status).Text = e.Message; Log("Наборы: " + e.Message); }
+            catch (Exception e) { C<TextBlock>(status).Text = e.Message; Error(e); }
         }
         /// <summary>Сохраняет выделение по именам после перезагрузки списка, независимо от ссылок на модели.</summary>
         internal void RefreshSets()
@@ -52,7 +66,7 @@ namespace IpaDesktop
                 C<TextBlock>("SetsCount").Text = sets.Count == 0 ? "Наборов пока нет" : "Сохранено наборов: " + sets.Count;
                 Preview(); ApplyActions();
             }
-            catch (Exception e) { C<TextBlock>("SetStatus").Text = e.Message; Log("Наборы: " + e.Message); }
+            catch (Exception e) { C<TextBlock>("SetStatus").Text = e.Message; Error(e); }
         }
         List<AppSet> Selected() { return C<ListBox>("AppSets").SelectedItems.Cast<AppSet>().ToList(); }
         void Preview()
@@ -94,6 +108,7 @@ namespace IpaDesktop
         {
             int count = Selected().Count;
             C<Button>("AddToSet").IsEnabled = C<Button>("SaveSet").IsEnabled = !busy && view.SelectedDownloads().Count > 0;
+            C<Button>("EditSet").IsEnabled = !busy && count == 1;
             C<Button>("UseSet").IsEnabled = C<Button>("DeleteSet").IsEnabled = !busy && count > 0;
             C<Button>("UseSet").Content = "В очередь скачивания (" + count + ")";
             C<Button>("DeleteSet").Content = "Удалить наборы (" + count + ")";

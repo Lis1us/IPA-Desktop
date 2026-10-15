@@ -29,6 +29,7 @@ namespace IpaDesktop
             }
         }
         public long Bytes { get; set; }
+        public string AppStoreID { get; set; }
         public string BundleID { get; set; }
         public string AppName { get; set; }
         public string Version { get; set; }

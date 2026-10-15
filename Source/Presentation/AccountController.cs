@@ -37,7 +37,7 @@ namespace IpaDesktop
             });
             On("Logout", delegate
             {
-                if (MessageBox.Show(w, "Выйти из текущей сессии ipatool? Это затронет и исходный скрипт.", "Выход", MessageBoxButton.YesNo) != MessageBoxResult.Yes) return;
+                if (MessageBox.Show(w, "Выйти из текущей сессии ipatool? Это завершит сохранённую сессию ipatool.", "Выход", MessageBoxButton.YesNo) != MessageBoxResult.Yes) return;
                 Work("Выход…", async delegate(CancellationToken ct)
                 {
                     Engine.Ensure(await engine.Tool(new[]

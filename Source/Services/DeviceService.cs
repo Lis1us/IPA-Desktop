@@ -91,6 +91,33 @@ namespace IpaDesktop
             foreach (var group in devices.GroupBy(x => x.Name).Where(g => g.Count() > 1)) foreach (var device in group) device.Name += " · " + device.ID.Substring(Math.Max(0, device.ID.Length - 6));
             return devices;
         }
+        /// <summary>По запросу читает модель и iOS одним вызовом ideviceinfo с ограниченным ожиданием.</summary>
+        public async Task<string> DetailsAsync(DeviceRow device, CancellationToken ct)
+        {
+            using (var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct))
+            {
+                timeout.CancelAfter(TimeSpan.FromSeconds(15));
+                Result result;
+                try { result = await runner.Run(locator.Find("ideviceinfo*.exe"), new[] { "-u", device.ID }, timeout.Token, false, false); }
+                catch (OperationCanceledException)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    throw new IOException("iPhone не ответил за 15 секунд. Разблокируйте его и проверьте USB.");
+                }
+                ToolResponse.Ensure(result);
+                var values = new Dictionary<string, string>(StringComparer.Ordinal);
+                foreach (var line in result.Output.Split('\n'))
+                {
+                    int split = line.IndexOf(':');
+                    if (split > 0) values[line.Substring(0, split).Trim()] = line.Substring(split + 1).Trim();
+                }
+                string model, version;
+                if (!values.TryGetValue("ProductType", out model)) model = "не удалось прочитать";
+                if (!values.TryGetValue("ProductVersion", out version)) version = "не удалось прочитать";
+                return "Имя: " + device.Name + Environment.NewLine + "Модель (ProductType): " + model +
+                    Environment.NewLine + "iOS: " + version + Environment.NewLine + "UDID: " + device.ID;
+            }
+        }
         /// <summary>Устанавливает указанный IPA на выбранный UDID с поддержкой отмены.</summary>
         public async Task InstallAsync(DeviceRow device, LocalRow file, CancellationToken ct)
         {

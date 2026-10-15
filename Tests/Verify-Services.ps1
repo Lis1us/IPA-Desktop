@@ -32,6 +32,7 @@ public sealed class RecordingProcessRunner : IProcessRunner
     public string LastPackage;
     public string LastWorkingDirectory;
     public bool FailInstall;
+    public bool FailDownload;
     public CancellationTokenSource CancelInstall;
     public Action<string> Log { get; set; }
     public Process Active { get { return null; } }
@@ -50,11 +51,13 @@ public sealed class RecordingProcessRunner : IProcessRunner
             if (CancelInstall != null) { CancelInstall.Cancel(); ct.ThrowIfCancellationRequested(); }
             if (FailInstall) return Task.FromResult(new Result { Code = 1, Output = "fixture install failure" });
         }
+        if (FailDownload && args.Length > 0 && args[0] == "download")
+            return Task.FromResult(new Result { Code = 1, Output = "ERROR: fixture download failure" });
         string output = "{\"success\":true}";
         if (Path.GetFileName(exe) == "idevice_id.exe")
             output = "00008030-0000111ABC000DEF\n00008030-0000111ABC000ABC\n";
         else if (Path.GetFileName(exe) == "ideviceinfo.exe")
-            output = "Test iPhone";
+            output = args.Length == 2 ? "ProductType: iPhone16,2\nProductVersion: 18.0\n" : "Test iPhone";
         else if (args.Length >= 2 && args[0] == "auth" && args[1] == "info")
             output = "{\"success\":true,\"email\":\"test@example.com\"}";
         return Task.FromResult(new Result { Code = 0, Output = output });
@@ -323,6 +326,69 @@ public static class InstallPathProbe {
  if(@($reopened.AppSets.Load()|Where-Object Name -like 'Overlap *').Count -ne 2){throw 'Multiple sets did not survive reopening'}
  $tabs.SelectedIndex=4;Pump;Click 'DeleteSet';Pump
  if(@($engine.AppSets.Load()|Where-Object Name -like 'Overlap *').Count -ne 0 -or $window.FindName('StorageFiles').Items.Count -ne 2){throw 'Batch set deletion lost files or retained selected sets'}
+ # Persistent errors survive tab switches and dismissal preserves the full report.
+ Click 'ClearChosen';$tabs.SelectedIndex=0;Pump
+ $window.FindName('Query').Text='999';Click 'Search';WaitIdle;Click 'AddChosen';Pump
+ $runner.FailDownload=$true;Click 'Download';WaitIdle
+ if($window.FindName('OperationNotice').Visibility -ne 'Visible' -or !$window.FindName('NoticeText').Text.Contains('999') -or !$window.FindName('NoticeText').Text.Contains('fixture download failure') -or !$window.FindName('NoticeRetry').IsEnabled){throw 'Failed download did not produce an actionable visible error'}
+ $tabs.SelectedIndex=4;Pump
+ if($window.FindName('OperationNotice').Visibility -ne 'Visible'){throw 'Error disappeared on tab switch'}
+ $savedReport=$desktop.GetType().GetField('lastReport',[Reflection.BindingFlags]'Instance,NonPublic').GetValue($desktop)
+ if($savedReport.Failed -ne 1 -or !$savedReport.Details.Contains('fixture download failure')){throw 'Report lost per-app CLI error'}
+ Click 'DismissNotice';Pump
+ if($window.FindName('OperationNotice').Visibility -ne 'Collapsed' -or !$window.FindName('ShowLastReport').IsEnabled){throw 'Dismissing notice lost last report'}
+ # Root error handling is nonmodal and visible even outside the journal.
+ $desktop.GetType().GetMethod('Error',[Reflection.BindingFlags]'Instance,NonPublic').Invoke($desktop,@((New-Object Exception('generic fixture error'))))|Out-Null
+ if(!$window.FindName('NoticeText').Text.Contains('generic fixture error') -or $window.FindName('NoticeRetry').Visibility -ne 'Collapsed'){throw 'Generic error was hidden or advertised an invalid retry'}
+ # Run a new failed batch, then retry through the banner itself.
+ $tabs.SelectedIndex=0;Click 'Download';WaitIdle
+ $runner.FailDownload=$false;Click 'NoticeRetry';WaitIdle
+ $report=$desktop.GetType().GetField('lastReport',[Reflection.BindingFlags]'Instance,NonPublic').GetValue($desktop)
+ if($report.Failed -ne 0 -or $report.Succeeded -ne 1 -or $window.FindName('NoticeRetry').Visibility -ne 'Collapsed'){throw 'Banner retry did not replace the failed result with success'}
+ # Dialog factories render the same IPA details and shared theme without extra file reads.
+ $ipaDialog=[IpaDesktop.AppDialogs]::Ipa($window,$window.FindName('Files').Items[0])
+ $ipaDialog.Show();$ipaDialog.UpdateLayout()
+ if($ipaDialog.Content.Children[0].Text -notmatch 'App Store ID:'){throw 'IPA details dialog is incomplete'}
+ $ipaDialog.Close()
+ $deviceText=$engine.Devices.DetailsAsync($devices[0],[Threading.CancellationToken]::None).GetAwaiter().GetResult()
+ if(!$deviceText.Contains('iPhone16,2') -or !$deviceText.Contains('18.0') -or !$deviceText.Contains($devices[0].ID)){throw 'Device details lost model/iOS/UDID'}
+ function FindNamed($node,$name) {
+  if($node -is [Windows.FrameworkElement] -and $node.Name -eq $name){return $node}
+  foreach($child in [Windows.LogicalTreeHelper]::GetChildren($node)){
+   if($child -is [Windows.DependencyObject]){$found=FindNamed $child $name;if($found){return $found}}
+  }
+ }
+ # Reparenting actual settings into a modal dialog must retain handlers and owner namescope.
+ $window.Dispatcher.BeginInvoke([Action]{
+  $dialog=@($window.OwnedWindows|Where-Object Title -eq 'Настройки IPA Desktop')[0]
+  if(!$dialog){throw 'Settings dialog did not open'}
+  $window.FindName('SoundsEnabled').IsChecked=$true;Click 'SoundsEnabled'
+  $dialog.Close()
+ })|Out-Null
+ Click 'OpenSettings';Pump
+ $checkSettings=New-Object IpaDesktop.Engine($temp)
+ if(!$checkSettings.Settings.SoundsEnabled -or $window.FindName('SettingsContent').Visibility -ne 'Collapsed' -or $window.FindName('SettingsContent').Parent -ne $window.FindName('SettingsHost')){throw 'Settings dialog lost persistence or parent after close'}
+ $engine.Settings.SoundsEnabled=$false;$engine.Save()
+ # Cancel an edited draft; then save a rename and removal through the actual editor buttons.
+ $editA=New-Object IpaDesktop.AppRow;$editA.ID='700';$editA.Name='Editor A'
+ $editB=New-Object IpaDesktop.AppRow;$editB.ID='701';$editB.Name='Editor B'
+ $engine.AppSets.SaveApps('Editor fixture',[IpaDesktop.AppRow[]]@($editA,$editB))
+ $script:editorSave=[Action[string,Collections.Generic.IEnumerable[IpaDesktop.AppRow]]]{param($name,$apps) $engine.AppSets.Update('Editor fixture',$name,$apps)}
+ $script:editor=[IpaDesktop.AppSetEditor]::Create($window,'Editor fixture',[IpaDesktop.AppRow[]]@($editA,$editB),$script:editorSave)
+ $window.Dispatcher.BeginInvoke([Action]{(FindNamed $script:editor 'DraftName').Text='Canceled rename';$script:editor.Close()})|Out-Null
+ $script:editor.ShowDialog()|Out-Null
+ if(@($engine.AppSets.Load()|Where-Object Name -eq 'Editor fixture').Count -ne 1){throw 'Cancel changed saved set'}
+ $script:editor=[IpaDesktop.AppSetEditor]::Create($window,'Editor fixture',[IpaDesktop.AppRow[]]@($editA,$editB),$script:editorSave)
+ $window.Dispatcher.BeginInvoke([Action]{
+  (FindNamed $script:editor 'DraftName').Text='Renamed editor'
+  $draftList=FindNamed $script:editor 'DraftApps';$draftList.SelectedIndex=0
+  (FindNamed $script:editor 'DraftRemove').RaiseEvent((New-Object Windows.RoutedEventArgs([Windows.Controls.Button]::ClickEvent)))
+  (FindNamed $script:editor 'DraftSave').RaiseEvent((New-Object Windows.RoutedEventArgs([Windows.Controls.Button]::ClickEvent)))
+ })|Out-Null
+ $saved=$script:editor.ShowDialog()
+ $edited=@($engine.AppSets.Load()|Where-Object Name -eq 'Renamed editor')
+ if(!$saved -or $edited.Count -ne 1 -or $edited[0].Apps.Count -ne 1 -or $edited[0].Apps[0].ID -ne '701'){throw 'Editor did not save atomic rename and removal'}
+ Write-Host 'PASS: visible per-app errors, tab persistence, dismissal, banner retry, IPA/device dialogs, settings reparent/persistence and set editor save/cancel'
  Write-Host 'PASS: simultaneous sets, overlapping IDs, version preservation, repeated additions, persistence and independent deletion'
  Write-Host 'PASS: editable inline set picker, additive deduplication, cross-tab refresh, both save buttons after completed download and explicit clear'
  Write-Host 'PASS: retry snapshot/version isolation, queue progress, saved set UI and storage UI'

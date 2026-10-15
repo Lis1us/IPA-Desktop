@@ -1,6 +1,7 @@
 // Generated from Source/. Edit the source classes, then run Sync-Sources.ps1.
 using Microsoft.Win32;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -8,7 +9,9 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Threading;
 using System.Windows.Controls;
+using System.Windows.Data;
 using System.Windows.Markup;
+using System.Windows.Media;
 using System.Windows;
 using System;
 
@@ -39,7 +42,7 @@ namespace IpaDesktop
             });
             On("Logout", delegate
             {
-                if (MessageBox.Show(w, "Выйти из текущей сессии ipatool? Это затронет и исходный скрипт.", "Выход", MessageBoxButton.YesNo) != MessageBoxResult.Yes) return;
+                if (MessageBox.Show(w, "Выйти из текущей сессии ipatool? Это завершит сохранённую сессию ipatool.", "Выход", MessageBoxButton.YesNo) != MessageBoxResult.Yes) return;
                 Work("Выход…", async delegate(CancellationToken ct)
                 {
                     Engine.Ensure(await engine.Tool(new[]
@@ -78,6 +81,138 @@ namespace IpaDesktop
     }
 }
 
+// Presentation/AppDialogs.cs
+namespace IpaDesktop
+{
+    /// <summary>Создаёт диалоги с общими стилями приложения, владельцем и тёмной рамкой Windows.</summary>
+    public static class AppDialogs
+    {
+        public static Window Create(Window owner, string title, double width, double height)
+        {
+            var dialog = new Window
+            {
+                Owner = owner, Title = title, Width = width, Height = height,
+                MinWidth = 460, MinHeight = 320, WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                Background = owner.Background, Foreground = owner.Foreground,
+                FontFamily = owner.FontFamily, FontSize = owner.FontSize,
+                ShowInTaskbar = false, Icon = owner.Icon
+            };
+            dialog.Resources.MergedDictionaries.Add(owner.Resources);
+            dialog.SourceInitialized += delegate { WindowTheme.Apply(dialog); };
+            return dialog;
+        }
+        /// <summary>Полный текст доступен для выделения и копирования, без автоматического открытия при ошибке.</summary>
+        public static Window Text(Window owner, string title, string details)
+        {
+            var dialog = Create(owner, title, 740, 530);
+            var layout = new Grid { Margin = new Thickness(18) };
+            layout.RowDefinitions.Add(new RowDefinition());
+            layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            var text = new TextBox
+            {
+                Text = details ?? "", IsReadOnly = true, TextWrapping = TextWrapping.Wrap,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled
+            };
+            layout.Children.Add(text);
+            var actions = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 14, 0, 0) };
+            var copy = new Button { Content = "Копировать" };
+            var status = new TextBlock { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0, 0, 0) };
+            copy.Click += delegate
+            {
+                try { Clipboard.SetText(text.Text); status.Text = "Скопировано"; }
+                catch (System.Runtime.InteropServices.ExternalException) { status.Text = "Буфер занят; выделите текст и нажмите Ctrl+C."; }
+            };
+            var close = new Button { Content = "Закрыть", IsCancel = true };
+            close.Click += delegate { dialog.Close(); };
+            actions.Children.Add(copy); actions.Children.Add(close); actions.Children.Add(status);
+            Grid.SetRow(actions, 1); layout.Children.Add(actions); dialog.Content = layout;
+            return dialog;
+        }
+        public static void ShowText(Window owner, string title, string details) { Text(owner, title, details).ShowDialog(); }
+        /// <summary>Данные уже прочитаны репозиторием; просмотр IPA не запускает дополнительное сканирование диска.</summary>
+        public static Window Ipa(Window owner, LocalRow row)
+        {
+            return Text(owner, "Сведения об IPA — " + row.DisplayName,
+                row.FileDetails + Environment.NewLine + "App Store ID: " + (row.AppStoreID ?? "не указан") +
+                Environment.NewLine + "Bundle ID: " + (row.BundleID ?? "не указан") +
+                Environment.NewLine + "Сборка: " + (row.Build ?? "не указана") +
+                Environment.NewLine + "Размер: " + row.Size);
+        }
+        /// <summary>Временно переносит существующие настройки в диалог, сохраняя обработчики и namescope главного окна.</summary>
+        public static void Settings(Window owner, Panel host, UIElement content)
+        {
+            int index = host.Children.IndexOf(content);
+            host.Children.Remove(content);
+            var dialog = Create(owner, "Настройки IPA Desktop", 800, 680);
+            content.Visibility = Visibility.Visible;
+            var layout = new Grid();
+            layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            layout.RowDefinitions.Add(new RowDefinition());
+            var notice = new TextBlock { Margin = new Thickness(24, 12, 24, 0), TextWrapping = TextWrapping.Wrap, Foreground = Brushes.Salmon };
+            notice.SetBinding(TextBlock.TextProperty, new Binding("Text") { Source = owner.FindName("NoticeText") });
+            notice.SetBinding(TextBlock.ToolTipProperty, new Binding("ToolTip") { Source = owner.FindName("NoticeText") });
+            notice.SetBinding(TextBlock.VisibilityProperty, new Binding("Visibility") { Source = owner.FindName("OperationNotice") });
+            layout.Children.Add(notice); Grid.SetRow(content, 1); layout.Children.Add(content);
+            dialog.Content = layout;
+            try { dialog.ShowDialog(); }
+            finally
+            {
+                layout.Children.Remove(content); Grid.SetRow(content, 0);
+                dialog.Content = null; content.Visibility = Visibility.Collapsed;
+                host.Children.Insert(index, content);
+            }
+        }
+    }
+}
+
+// Presentation/AppSetEditor.cs
+namespace IpaDesktop
+{
+    /// <summary>Редактирует независимую копию набора; отмена не меняет файл конфигурации.</summary>
+    public static class AppSetEditor
+    {
+        public static Window Create(Window owner, string name, IEnumerable<AppRow> apps, Action<string, IEnumerable<AppRow>> save)
+        {
+            var draft = new ObservableCollection<AppRow>(apps.Select(x => new AppRow { ID = x.ID, Name = x.Name }));
+            var dialog = AppDialogs.Create(owner, "Редактирование набора", 680, 580);
+            var grid = new Grid { Margin = new Thickness(18) };
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            grid.RowDefinitions.Add(new RowDefinition());
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            var title = new TextBox { Text = name, MaxLength = 64, Margin = new Thickness(0, 0, 0, 12) };
+            title.Name = "DraftName"; grid.Children.Add(title);
+            var list = new ListBox { SelectionMode = SelectionMode.Multiple, ItemsSource = draft, DisplayMemberPath = "Name" };
+            list.Style = (Style)owner.FindResource("SetList"); list.Name = "DraftApps";
+            Grid.SetRow(list, 1); grid.Children.Add(list);
+            var bottom = new StackPanel { Margin = new Thickness(0, 12, 0, 0) };
+            var hint = new TextBlock { Text = "Клик — отметить приложение. Новые приложения добавляются в набор через поиск.", TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 8) };
+            var status = new TextBlock { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 8) };
+            status.Foreground = System.Windows.Media.Brushes.Salmon;
+            var buttons = new WrapPanel();
+            var remove = new Button { Content = "Убрать отмеченные" }; remove.Name = "DraftRemove";
+            remove.Click += delegate { foreach (var item in list.SelectedItems.Cast<AppRow>().ToArray()) draft.Remove(item); };
+            var apply = new Button { Content = "Сохранить" }; apply.Name = "DraftSave";
+            apply.Click += delegate
+            {
+                try
+                {
+                    save(title.Text.Trim(), draft.ToArray());
+                    dialog.DialogResult = true;
+                }
+                catch (Exception e) { status.Text = e.Message; }
+            };
+            var cancel = new Button { Content = "Отмена", IsCancel = true };
+            cancel.Click += delegate { dialog.Close(); };
+            buttons.Children.Add(remove); buttons.Children.Add(apply); buttons.Children.Add(cancel);
+            bottom.Children.Add(hint); bottom.Children.Add(status); bottom.Children.Add(buttons);
+            Grid.SetRow(bottom, 2); grid.Children.Add(bottom);
+            dialog.Content = grid;
+            return dialog;
+        }
+    }
+}
+
 // Presentation/AppSetsController.cs
 namespace IpaDesktop
 {
@@ -89,6 +224,20 @@ namespace IpaDesktop
             C<ListBox>("AppSets").SelectionChanged += delegate { Preview(); ApplyActions(); };
             On("AddToSet", delegate { Save(C<ComboBox>("SearchSet").Text, "SearchSetStatus"); });
             On("SaveSet", delegate { Save(C<TextBox>("SetName").Text, "SetStatus"); });
+            On("EditSet", delegate
+            {
+                var selected = Selected();
+                if (selected.Count != 1) return;
+                var original = selected[0];
+                Work("Открытие набора…", async delegate(CancellationToken ct)
+                {
+                    var apps = await Task.Run(delegate { ct.ThrowIfCancellationRequested(); return engine.AppSets.ResolveApps(original); }, ct);
+                    ct.ThrowIfCancellationRequested();
+                    var editor = AppSetEditor.Create(w, original.Name, apps,
+                        delegate(string name, IEnumerable<AppRow> rows) { engine.AppSets.Update(original.Name, name, rows); });
+                    if (editor.ShowDialog() == true) RefreshSets();
+                });
+            });
             On("DeleteSet", DeleteSelected);
             On("UseSet", UseSelected);
             RefreshSets();
@@ -108,7 +257,7 @@ namespace IpaDesktop
                 C<TextBlock>(status).Text = "Набор «" + name + "» сохранён. Повторы по ID исключены.";
                 view.RegisterPrivate(name);
             }
-            catch (Exception e) { C<TextBlock>(status).Text = e.Message; Log("Наборы: " + e.Message); }
+            catch (Exception e) { C<TextBlock>(status).Text = e.Message; Error(e); }
         }
         /// <summary>Сохраняет выделение по именам после перезагрузки списка, независимо от ссылок на модели.</summary>
         internal void RefreshSets()
@@ -127,7 +276,7 @@ namespace IpaDesktop
                 C<TextBlock>("SetsCount").Text = sets.Count == 0 ? "Наборов пока нет" : "Сохранено наборов: " + sets.Count;
                 Preview(); ApplyActions();
             }
-            catch (Exception e) { C<TextBlock>("SetStatus").Text = e.Message; Log("Наборы: " + e.Message); }
+            catch (Exception e) { C<TextBlock>("SetStatus").Text = e.Message; Error(e); }
         }
         List<AppSet> Selected() { return C<ListBox>("AppSets").SelectedItems.Cast<AppSet>().ToList(); }
         void Preview()
@@ -169,6 +318,7 @@ namespace IpaDesktop
         {
             int count = Selected().Count;
             C<Button>("AddToSet").IsEnabled = C<Button>("SaveSet").IsEnabled = !busy && view.SelectedDownloads().Count > 0;
+            C<Button>("EditSet").IsEnabled = !busy && count == 1;
             C<Button>("UseSet").IsEnabled = C<Button>("DeleteSet").IsEnabled = !busy && count > 0;
             C<Button>("UseSet").Content = "В очередь скачивания (" + count + ")";
             C<Button>("DeleteSet").Content = "Удалить наборы (" + count + ")";
@@ -245,6 +395,10 @@ namespace IpaDesktop
             if (updates != null) updates.RefreshActions();
             if (appSets != null) appSets.RefreshActions();
             if (storage != null) storage.RefreshActions();
+            C<Button>("NoticeRetry").IsEnabled = !busy && noticeRetry != null && lastReport != null && lastReport.Failed > 0 &&
+                (lastReport.Kind == "Скачивание" ? C<Button>("RetryDownloads").IsEnabled : C<Button>("RetryInstalls").IsEnabled);
+            C<Button>("OpenSettings").IsEnabled = !busy;
+            C<Button>("ShowLastReport").IsEnabled = lastReport != null;
         }
         internal T C<T>(string name) where T : class
         {
@@ -276,6 +430,35 @@ namespace IpaDesktop
         }
         readonly QueueProgress queueProgress = new QueueProgress();
         readonly CompletionSound completionSound = new CompletionSound();
+        OperationReport activeReport;
+        OperationReport lastReport;
+        Action noticeRetry;
+        /// <summary>Фиксирует самостоятельный снимок очереди и её действие повтора.</summary>
+        internal void StartReport(string kind, int total, Action retry)
+        {
+            activeReport = new OperationReport { Kind = kind, Total = total };
+            noticeRetry = retry;
+            C<Border>("OperationNotice").Visibility = Visibility.Collapsed;
+        }
+        internal void ReportItem(string name, Exception error)
+        {
+            if (activeReport != null) activeReport.Add(name, error);
+        }
+        void RenderNotice()
+        {
+            if (lastReport == null) return;
+            var names = String.Join(", ", lastReport.Items.Where(x => !x.Success).Take(1).Select(x => x.Name + ": " + x.ShortError));
+            C<TextBlock>("NoticeText").Text = lastReport.Summary + (names.Length == 0 ? "" : " · " + names);
+            C<TextBlock>("NoticeText").ToolTip = lastReport.Details;
+            bool errors = lastReport.Failed > 0;
+            var notice = C<Border>("OperationNotice");
+            notice.Background = new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(errors ? "#38232C" : lastReport.Canceled ? "#383122" : "#173529"));
+            notice.BorderBrush = new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(errors ? "#E17B8B" : lastReport.Canceled ? "#D7BC79" : "#6AB893"));
+            C<Button>("NoticeRetry").Visibility = errors && noticeRetry != null ? Visibility.Visible : Visibility.Collapsed;
+            notice.Visibility = Visibility.Visible;
+            ApplyActions();
+        }
+
         /// <summary>Показывает название приложения и позицию в текущем пакете.</summary>
         internal void BeginQueue(string kind, int index, int total, string app)
         {
@@ -289,6 +472,7 @@ namespace IpaDesktop
             queueProgress.Complete(success, failed);
             RenderQueue();
             completionSound.Notify(engine.Settings.SoundsEnabled, success, failed);
+            if (activeReport != null) { lastReport = activeReport; RenderNotice(); }
         }
         /// <summary>Отрисовывает снимок прогресса в UI-потоке без прямого доступа фоновых процессов к WPF.</summary>
         void RenderQueue()
@@ -315,7 +499,14 @@ namespace IpaDesktop
         {
             Log(e.Message);
             C<TextBlock>("Status").Text = "Ошибка — подробности в журнале";
-            MessageBox.Show(w, e.Message, "IPA Desktop", MessageBoxButton.OK, MessageBoxImage.Warning);
+            if (activeReport == null || activeReport.Failed == 0)
+            {
+                lastReport = new OperationReport { Kind = "Операция", Total = 1 };
+                lastReport.Add(activeReport == null ? "Ошибка операции" : activeReport.Kind, e);
+                noticeRetry = null;
+            }
+            else lastReport = activeReport;
+            RenderNotice();
         }
         /// <summary>Отображает настройки, блокируя повторную реакцию обработчиков переключателей.</summary>
         internal void StateView()
@@ -338,7 +529,7 @@ namespace IpaDesktop
             cancellation = new CancellationTokenSource();
             string[] buttons =
             {
-                "Login", "AccountInfo", "Logout", "Search", "Versions", "VersionInfo", "Download", "RefreshFiles", "ImportFile", "DeleteFiles", "Devices", "InstallFiles", "CheckUpdate", "Rollback", "CheckGuiUpdate", "InstallGuiUpdate", "AddChosen", "ClearChosen", "AddInstall", "ClearInstall", "CheckAppleSupport", "CheckDeviceUpdate", "RollbackDevices", "RetryDownloads", "ForgetDownloadErrors", "RetryInstalls", "ForgetInstallErrors", "SaveSet", "AddToSet", "UseSet", "DeleteSet", "SelectOld", "DeleteStorage", "RefreshStorage"
+                "Login", "AccountInfo", "Logout", "Search", "Versions", "VersionInfo", "Download", "RefreshFiles", "ImportFile", "DeleteFiles", "Devices", "InstallFiles", "CheckUpdate", "Rollback", "CheckGuiUpdate", "InstallGuiUpdate", "AddChosen", "ClearChosen", "AddInstall", "ClearInstall", "CheckAppleSupport", "CheckDeviceUpdate", "RollbackDevices", "RetryDownloads", "ForgetDownloadErrors", "RetryInstalls", "ForgetInstallErrors", "SaveSet", "AddToSet", "UseSet", "DeleteSet", "EditSet", "FileInfo", "DeviceInfo", "SelectOld", "DeleteStorage", "RefreshStorage"
             };
             foreach (var name in buttons) C<Button>(name).IsEnabled = false;
             C<ItemsControl>("ChosenFiles").IsEnabled = false;
@@ -358,6 +549,7 @@ namespace IpaDesktop
             } catch (OperationCanceledException)
             {
                 queueProgress.Stop("Отменено");
+                if (activeReport != null) { activeReport.Canceled = true; lastReport = activeReport; RenderNotice(); }
                 Log("Операция отменена.");
                 C<TextBlock>("Status").Text = "Отменено";
             } catch (Exception e)
@@ -367,6 +559,7 @@ namespace IpaDesktop
             } finally
             {
                 busy = false;
+                activeReport = null;
                 cancellation.Dispose();
                 cancellation = null;
                 foreach (var name in buttons) C<Button>(name).IsEnabled = true;
@@ -443,6 +636,18 @@ namespace IpaDesktop
             appSets = new AppSetsController(this, engine);
             StateView();
             RefreshFiles();
+            On("OpenSettings", delegate
+            {
+                AppDialogs.Settings(w, C<Grid>("SettingsHost"), C<ScrollViewer>("SettingsContent"));
+            });
+            Action showReport = delegate
+            {
+                if (lastReport != null) AppDialogs.ShowText(w.OwnedWindows.Cast<Window>().FirstOrDefault(x => x.IsActive) ?? w, "Итог операции", lastReport.Details);
+            };
+            On("ShowLastReport", showReport);
+            On("NoticeDetails", showReport);
+            On("DismissNotice", delegate { C<Border>("OperationNotice").Visibility = Visibility.Collapsed; });
+            On("NoticeRetry", delegate { if (!busy && noticeRetry != null) noticeRetry(); });
             On("Cancel", delegate
             {
                 if (cancellation != null) cancellation.Cancel();
@@ -606,6 +811,22 @@ namespace IpaDesktop
                 installChosen.Remove(path);
                 RefreshInstallChosen();
             });
+            On("FileInfo", delegate
+            {
+                var row = C<DataGrid>("Files").SelectedItem as LocalRow;
+                if (row != null) AppDialogs.Ipa(w, row).ShowDialog();
+            });
+            On("DeviceInfo", delegate
+            {
+                var device = C<ComboBox>("DeviceList").SelectedItem as DeviceRow;
+                if (device == null) return;
+                Work("Сведения об iPhone…", async delegate(CancellationToken ct)
+                {
+                    var details = await engine.Devices.DetailsAsync(device, ct);
+                    ct.ThrowIfCancellationRequested();
+                    AppDialogs.ShowText(w, "Об iPhone", details);
+                });
+            });
             On("RefreshFiles", RefreshFiles);
             On("DeleteFiles", delegate { DeleteRows(installChosen.Snapshot()); });
             On("ImportFile", delegate
@@ -684,12 +905,13 @@ namespace IpaDesktop
             if (MessageBox.Show(w, "Установить IPA (" + rows.Count + ") на " + device.Name + "?" + Environment.NewLine + Environment.NewLine + summary, "Установка", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) != MessageBoxResult.Yes) return;
             Work("Установка IPA…", async delegate(CancellationToken ct)
             {
+                view.StartReport("Установка", rows.Count, delegate { StartInstall(failedInstalls.Snapshot()); });
                 await CheckSupport(ct);
                 var result = await BatchRunner.Run(rows,
                     (row, token) => engine.Devices.InstallAsync(device, row, token),
                     (row, index) => { view.BeginQueue("Установка", index, rows.Count, row.DisplayName); Log("Установка " + row.DisplayName); },
-                    row => { installChosen.Remove(row.Path); failedInstalls.Remove(row.Path); RefreshInstallChosen(); },
-                    (row, error) => { failedInstalls.Add(row); Log("Ошибка установки " + row.DisplayName + ": " + error.Message); },
+                    row => { view.ReportItem(row.DisplayName, null); installChosen.Remove(row.Path); failedInstalls.Remove(row.Path); RefreshInstallChosen(); },
+                    (row, error) => { view.ReportItem(row.DisplayName, error); failedInstalls.Add(row); Log("Ошибка установки " + row.DisplayName + ": " + error.Message); },
                     null, ct);
                 view.CompleteQueue(result.Succeeded, result.Failed.Count);
                 if (result.Failed.Count > 0) throw new Exception("Не удалось установить: " + String.Join(", ", result.Failed.Select(x => x.DisplayName)) + ". Кнопка «Повторить ошибки» повторит только эти IPA.");
@@ -712,6 +934,8 @@ namespace IpaDesktop
         /// <summary>Пересчитывает доступность действий по состоянию выбора и выполняемой операции.</summary>
         public override void RefreshActions()
         {
+            C<Button>("FileInfo").IsEnabled = !busy && C<DataGrid>("Files").SelectedItems.Count == 1;
+            C<Button>("DeviceInfo").IsEnabled = !busy && C<ComboBox>("DeviceList").SelectedItem != null;
             C<Button>("RetryInstalls").IsEnabled = !busy && failedInstalls.Count > 0 && C<ComboBox>("DeviceList").SelectedItem != null;
             C<Button>("RetryInstalls").Content = "Повторить ошибки (" + failedInstalls.Count + ")";
             C<Button>("RetryInstalls").ToolTip = String.Join(Environment.NewLine, failedInstalls.Snapshot().Select(x => x.DisplayName));
@@ -955,7 +1179,7 @@ namespace IpaDesktop
                     var data = Engine.Object(r.Output);
                     var number = Convert.ToString(Engine.Get(data, "displayVersion"));
                     var date = Convert.ToString(Engine.Get(data, "releaseDate"));
-                    MessageBox.Show(w, row.Name + Environment.NewLine + Environment.NewLine + "Версия: " + (String.IsNullOrWhiteSpace(number) ? "не указана" : number) + Environment.NewLine + "Дата выпуска: " + (String.IsNullOrWhiteSpace(date) ? "не указана" : date) + Environment.NewLine + "ID версии: " + version + Environment.NewLine + "App Store ID: " + row.ID, "Сведения о версии", MessageBoxButton.OK, MessageBoxImage.Information);
+                    AppDialogs.ShowText(w, "Сведения о версии", row.Name + Environment.NewLine + Environment.NewLine + "Версия: " + (String.IsNullOrWhiteSpace(number) ? "не указана" : number) + Environment.NewLine + "Дата выпуска: " + (String.IsNullOrWhiteSpace(date) ? "не указана" : date) + Environment.NewLine + "ID версии: " + version + Environment.NewLine + "App Store ID: " + row.ID);
                 });
             });
             RowClickSelection.Attach(C<DataGrid>("Apps"), delegate(object item)
@@ -1013,11 +1237,13 @@ namespace IpaDesktop
             if (remember) lastDownloads = rows.Select(x => new DownloadItem { ID = x.ID, Name = x.Name, VersionID = x.VersionID }).ToList();
             Work("Скачивание IPA…", async delegate(CancellationToken ct)
             {
+                view.StartReport("Скачивание", rows.Count, delegate { StartDownloads(failedDownloads.Snapshot(), false); });
                 var result = await BatchRunner.Run(rows,
                     (row, token) => engine.ApplicationDownloads.DownloadAsync(row, token),
                     (row, index) => { view.BeginQueue("Скачивание", index, rows.Count, row.Name); Log("В очереди: " + row.Label); },
                     row =>
                     {
+                        view.ReportItem(row.Name, null);
                         var current = chosen.Snapshot().FirstOrDefault(x => x.ID == row.ID);
                         // Повтор старой версии не снимает новую версию, отдельно выбранную пользователем.
                         if (current != null && current.VersionID == row.VersionID) chosen.Remove(row.ID);
@@ -1026,6 +1252,7 @@ namespace IpaDesktop
                     },
                     (row, error) =>
                     {
+                        view.ReportItem(row.Name, error);
                         failedDownloads.Add(new AppRow { ID = row.ID, Name = row.Name }, row.VersionID);
                         Log("Не удалось скачать " + row.Name + ": " + error.Message);
                     }, RefreshLocalFiles, ct);

@@ -27,7 +27,7 @@ namespace IpaDesktop
     /// <summary>Единые сведения о версии и репозитории GUI; версия в XAML сверяется при выпуске.</summary>
     public static class AppInfo
     {
-        public const string Version = "0.1.28";
+        public const string Version = "0.2.0";
         public const string Repository = "iamdarkls/IPA-Desktop";
         public const string ReleasesUrl = "https://github.com/" + Repository + "/releases";
     }
@@ -309,7 +309,7 @@ namespace IpaDesktop
         {
             return new LocalRow
             {
-                Name = row.Name, Path = row.Path, Size = row.Size, AppleAccount = row.AppleAccount, Bytes = row.Bytes, BundleID = row.BundleID, AppName = row.AppName, Version = row.Version, Build = row.Build, IsOld = row.IsOld, StorageStatus = row.StorageStatus
+                AppStoreID = row.AppStoreID, Name = row.Name, Path = row.Path, Size = row.Size, AppleAccount = row.AppleAccount, Bytes = row.Bytes, BundleID = row.BundleID, AppName = row.AppName, Version = row.Version, Build = row.Build, IsOld = row.IsOld, StorageStatus = row.StorageStatus
             };
         }
         public int Count
@@ -394,6 +394,7 @@ namespace IpaDesktop
             }
         }
         public long Bytes { get; set; }
+        public string AppStoreID { get; set; }
         public string BundleID { get; set; }
         public string AppName { get; set; }
         public string Version { get; set; }
@@ -419,6 +420,69 @@ namespace IpaDesktop
         {
             get;
             set;
+        }
+    }
+}
+
+// Domain/OperationReport.cs
+namespace IpaDesktop
+{
+    /// <summary>Итог одной очереди с полными ошибками; не зависит от журнала и текущей вкладки.</summary>
+    public sealed class OperationReport
+    {
+        public string Kind { get; set; }
+        public int Total { get; set; }
+        public bool Canceled { get; set; }
+        public readonly List<OperationOutcome> Items = new List<OperationOutcome>();
+        public int Failed { get { return Items.Count(x => !x.Success); } }
+        public int Succeeded { get { return Items.Count(x => x.Success); } }
+        public string Summary
+        {
+            get
+            {
+                return Kind + (Canceled ? " отменено" : Failed > 0 ? ": есть ошибки" : ": завершено") +
+                    " · готово " + Succeeded + "/" + Total + (Failed > 0 ? " · ошибок " + Failed : "");
+            }
+        }
+        public string Details
+        {
+            get
+            {
+                var text = new StringBuilder(Summary);
+                if (Canceled) text.AppendLine().Append("Не запущено или прервано: ").Append(Math.Max(0, Total - Items.Count));
+                foreach (var item in Items)
+                {
+                    text.AppendLine().AppendLine().Append(item.Success ? "ГОТОВО: " : "ОШИБКА: ").Append(item.Name);
+                    if (!item.Success) text.AppendLine().Append(item.Error);
+                }
+                return text.ToString();
+            }
+        }
+        public void Add(string name, Exception error)
+        {
+            string message = error == null ? null : error.Message;
+            if (message != null && message.Length > 16000) message = message.Substring(0, 16000);
+            Items.Add(new OperationOutcome { Name = name, Success = error == null, Error = message });
+        }
+    }
+
+    /// <summary>Результат отдельного приложения без потери исходного сообщения утилиты.</summary>
+    public sealed class OperationOutcome
+    {
+        public string Name { get; set; }
+        public bool Success { get; set; }
+        public string Error { get; set; }
+        public string ShortError
+        {
+            get
+            {
+                if (String.IsNullOrWhiteSpace(Error)) return "";
+                if (Error.IndexOf("zip_open", StringComparison.OrdinalIgnoreCase) >= 0) return "Не удалось открыть IPA";
+                if (Error.IndexOf("ApplicationVerificationFailed", StringComparison.OrdinalIgnoreCase) >= 0) return "iPhone отклонил проверку приложения";
+                var line = Error.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
+                    .FirstOrDefault(x => !x.StartsWith("Код ошибки", StringComparison.OrdinalIgnoreCase)) ?? Error;
+                return line.Length > 120 ? line.Substring(0, 120) + "…" : line;
+            }
         }
     }
 }
@@ -1554,6 +1618,18 @@ namespace IpaDesktop
             sets.Add(set);
             Write(sets);
         }
+        /// <summary>Атомарно меняет имя и состав; конфликт имени не перезаписывает другой набор.</summary>
+        public void Update(string originalName, string name, IEnumerable<AppRow> apps)
+        {
+            var updated = new AppSet { Name = (name ?? "").Trim(), Apps = AppSetRules.UniqueApps(apps) };
+            AppSetRules.Validate(updated);
+            var sets = Load();
+            var original = sets.FirstOrDefault(x => String.Equals(x.Name, originalName, StringComparison.OrdinalIgnoreCase));
+            if (original == null) throw new IOException("Набор уже удалён. Обновите список.");
+            if (sets.Any(x => !Object.ReferenceEquals(x, original) && String.Equals(x.Name, updated.Name, StringComparison.OrdinalIgnoreCase)))
+                throw new IOException("Набор с таким именем уже существует.");
+            sets.Remove(original); sets.Add(updated); Write(sets);
+        }
         /// <summary>Дополняет именованный набор без повторов по ID, сохраняя ранее добавленные приложения.</summary>
         public void AddApps(string name, IEnumerable<AppRow> apps)
         {
@@ -1784,6 +1860,33 @@ namespace IpaDesktop
             }
             foreach (var group in devices.GroupBy(x => x.Name).Where(g => g.Count() > 1)) foreach (var device in group) device.Name += " · " + device.ID.Substring(Math.Max(0, device.ID.Length - 6));
             return devices;
+        }
+        /// <summary>По запросу читает модель и iOS одним вызовом ideviceinfo с ограниченным ожиданием.</summary>
+        public async Task<string> DetailsAsync(DeviceRow device, CancellationToken ct)
+        {
+            using (var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct))
+            {
+                timeout.CancelAfter(TimeSpan.FromSeconds(15));
+                Result result;
+                try { result = await runner.Run(locator.Find("ideviceinfo*.exe"), new[] { "-u", device.ID }, timeout.Token, false, false); }
+                catch (OperationCanceledException)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    throw new IOException("iPhone не ответил за 15 секунд. Разблокируйте его и проверьте USB.");
+                }
+                ToolResponse.Ensure(result);
+                var values = new Dictionary<string, string>(StringComparer.Ordinal);
+                foreach (var line in result.Output.Split('\n'))
+                {
+                    int split = line.IndexOf(':');
+                    if (split > 0) values[line.Substring(0, split).Trim()] = line.Substring(split + 1).Trim();
+                }
+                string model, version;
+                if (!values.TryGetValue("ProductType", out model)) model = "не удалось прочитать";
+                if (!values.TryGetValue("ProductVersion", out version)) version = "не удалось прочитать";
+                return "Имя: " + device.Name + Environment.NewLine + "Модель (ProductType): " + model +
+                    Environment.NewLine + "iOS: " + version + Environment.NewLine + "UDID: " + device.ID;
+            }
         }
         /// <summary>Устанавливает указанный IPA на выбранный UDID с поддержкой отмены.</summary>
         public async Task InstallAsync(DeviceRow device, LocalRow file, CancellationToken ct)
@@ -2461,7 +2564,7 @@ namespace IpaDesktop
                             metadataCache[path] = cached;
                         }
                         var metadata = cached.Item3;
-                        rows.Add(new LocalRow { Name = file.Name, Size = StorageAnalysis.Bytes(file.Length), Bytes = file.Length, Path = file.FullName, AppleAccount = metadata.Account, BundleID = metadata.BundleID, AppName = metadata.AppName, Version = metadata.Version, Build = metadata.Build });
+                        rows.Add(new LocalRow { Name = file.Name, Size = StorageAnalysis.Bytes(file.Length), Bytes = file.Length, Path = file.FullName, AppleAccount = metadata.Account, AppStoreID = metadata.AppStoreID, BundleID = metadata.BundleID, AppName = metadata.AppName, Version = metadata.Version, Build = metadata.Build });
                     }
                     catch (FileNotFoundException) { }
                     catch (DirectoryNotFoundException) { }

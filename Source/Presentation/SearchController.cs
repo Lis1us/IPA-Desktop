@@ -148,7 +148,7 @@ namespace IpaDesktop
                     var data = Engine.Object(r.Output);
                     var number = Convert.ToString(Engine.Get(data, "displayVersion"));
                     var date = Convert.ToString(Engine.Get(data, "releaseDate"));
-                    MessageBox.Show(w, row.Name + Environment.NewLine + Environment.NewLine + "Версия: " + (String.IsNullOrWhiteSpace(number) ? "не указана" : number) + Environment.NewLine + "Дата выпуска: " + (String.IsNullOrWhiteSpace(date) ? "не указана" : date) + Environment.NewLine + "ID версии: " + version + Environment.NewLine + "App Store ID: " + row.ID, "Сведения о версии", MessageBoxButton.OK, MessageBoxImage.Information);
+                    AppDialogs.ShowText(w, "Сведения о версии", row.Name + Environment.NewLine + Environment.NewLine + "Версия: " + (String.IsNullOrWhiteSpace(number) ? "не указана" : number) + Environment.NewLine + "Дата выпуска: " + (String.IsNullOrWhiteSpace(date) ? "не указана" : date) + Environment.NewLine + "ID версии: " + version + Environment.NewLine + "App Store ID: " + row.ID);
                 });
             });
             RowClickSelection.Attach(C<DataGrid>("Apps"), delegate(object item)
@@ -206,11 +206,13 @@ namespace IpaDesktop
             if (remember) lastDownloads = rows.Select(x => new DownloadItem { ID = x.ID, Name = x.Name, VersionID = x.VersionID }).ToList();
             Work("Скачивание IPA…", async delegate(CancellationToken ct)
             {
+                view.StartReport("Скачивание", rows.Count, delegate { StartDownloads(failedDownloads.Snapshot(), false); });
                 var result = await BatchRunner.Run(rows,
                     (row, token) => engine.ApplicationDownloads.DownloadAsync(row, token),
                     (row, index) => { view.BeginQueue("Скачивание", index, rows.Count, row.Name); Log("В очереди: " + row.Label); },
                     row =>
                     {
+                        view.ReportItem(row.Name, null);
                         var current = chosen.Snapshot().FirstOrDefault(x => x.ID == row.ID);
                         // Повтор старой версии не снимает новую версию, отдельно выбранную пользователем.
                         if (current != null && current.VersionID == row.VersionID) chosen.Remove(row.ID);
@@ -219,6 +221,7 @@ namespace IpaDesktop
                     },
                     (row, error) =>
                     {
+                        view.ReportItem(row.Name, error);
                         failedDownloads.Add(new AppRow { ID = row.ID, Name = row.Name }, row.VersionID);
                         Log("Не удалось скачать " + row.Name + ": " + error.Message);
                     }, RefreshLocalFiles, ct);
