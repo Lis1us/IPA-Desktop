@@ -156,6 +156,20 @@ try {
  $bitmap.Render($visual);$encoder=New-Object Windows.Media.Imaging.PngBitmapEncoder
  $encoder.Frames.Add([Windows.Media.Imaging.BitmapFrame]::Create($bitmap));$stream=New-Object IO.MemoryStream
  $encoder.Save($stream);Write-Host ('IPA_LIBRARY_PREVIEW:'+ [Convert]::ToBase64String($stream.ToArray()));$stream.Dispose()
+ # Windows default disabled ListBox template can replace a transparent background with white.
+ $setList=$window.FindName('AppSets')
+ foreach($hasItems in @($false,$true)) {
+  if($hasItems){$setList.ItemsSource=[IpaDesktop.AppSet[]]@($setA,$setB);$setList.SelectedItems.Add($setA)|Out-Null}
+  else {$setList.ItemsSource=[IpaDesktop.AppSet[]]@()}
+  foreach($enabled in @($true,$false,$true)) {
+   $setList.IsEnabled=$enabled
+   $window.Dispatcher.Invoke([Action]{},[Windows.Threading.DispatcherPriority]::ApplicationIdle);$window.UpdateLayout()
+   $surface=$setList.Template.FindName('SetListSurface',$setList)
+   if(!$surface -or $surface.Background.Color.ToString() -ne '#FF101A29'){throw 'Set list lost dark surface when disabled or empty'}
+   if($hasItems -and ($setList.SelectedItems.Count -ne 1 -or $setList.Items.Count -ne 2)){throw 'Disabling set list changed selection or items'}
+  }
+ }
+ Write-Host 'PASS: dark set-list surface for empty/populated and enabled/disabled states; selection preserved'
  if($minimumHeight -lt 80){throw 'Application table collapsed at minimum size'}
  Write-Host 'PASS: all tab templates, dark combo popup, minimum window layout, icon and DWM initialization'
 }finally{$window.Close()}

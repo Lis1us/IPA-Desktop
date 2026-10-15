@@ -1,4 +1,4 @@
-<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Title="IPA Desktop · 0.1.26" Width="1160" Height="800" MinWidth="940" MinHeight="720" WindowStartupLocation="CenterScreen" Background="#10151F" Foreground="#EDF1F8" FontFamily="Segoe UI" FontSize="14" UseLayoutRounding="True" SnapsToDevicePixels="True">
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Title="IPA Desktop · 0.1.27" Width="1160" Height="800" MinWidth="940" MinHeight="720" WindowStartupLocation="CenterScreen" Background="#10151F" Foreground="#EDF1F8" FontFamily="Segoe UI" FontSize="14" UseLayoutRounding="True" SnapsToDevicePixels="True">
   <Window.Resources>
     <!-- Общие состояния кнопок, полей, вкладок и таблиц. -->
     <Style TargetType="Button">
@@ -204,6 +204,29 @@
         </Setter.Value>
       </Setter>
     </Style>
+    <!-- Собственный шаблон не позволяет теме Windows подменять фон при IsEnabled=False. -->
+    <Style x:Key="SetList" TargetType="ListBox">
+      <Setter Property="Background" Value="#101A29"/>
+      <Setter Property="Foreground" Value="#EDF1F8"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="OverridesDefaultStyle" Value="True"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="ListBox">
+            <Border x:Name="SetListSurface" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" Padding="{TemplateBinding Padding}">
+              <ScrollViewer Focusable="False" CanContentScroll="True" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                <ItemsPresenter/>
+              </ScrollViewer>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Opacity" Value="0.65"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
     <!-- Карточки наборов: обычный клик переключает выбор, Ctrl не требуется. -->
     <Style x:Key="SetListItem" TargetType="ListBoxItem">
       <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
@@ -246,7 +269,7 @@
           <Image x:Name="BrandIcon" Width="46" Height="46" Margin="0,0,12,0"/>
           <TextBlock Text="IPA Desktop" FontSize="30" FontWeight="SemiBold" VerticalAlignment="Center"/>
           <Border Background="#23354E" CornerRadius="6" Padding="8,4" Margin="12,0,0,0" VerticalAlignment="Center">
-            <TextBlock Text="0.1.26" Foreground="#AFCDF7" FontSize="12"/>
+            <TextBlock Text="0.1.27" Foreground="#AFCDF7" FontSize="12"/>
           </Border>
         </StackPanel>
         <TextBlock Text="Приложения для iPhone — поиск, загрузка и установка" Foreground="#9BACBF" Margin="0,6,0,20"/>
@@ -434,7 +457,7 @@
             <Border Background="#1C293B" BorderBrush="#34445C" BorderThickness="1" CornerRadius="10" Padding="20" Margin="0,0,0,24">
               <StackPanel>
                 <TextBlock Text="IPA Desktop" FontSize="22" FontWeight="SemiBold"/>
-                <TextBlock x:Name="GuiVersionStatus" Text="Установлена версия 0.1.26" Foreground="#8CBAFF" Margin="0,8,0,14"/>
+                <TextBlock x:Name="GuiVersionStatus" Text="Установлена версия 0.1.27" Foreground="#8CBAFF" Margin="0,8,0,14"/>
                 <CheckBox x:Name="CheckGuiUpdates" Content="Проверять новые версии программы при запуске" Foreground="#EDF1F8" Margin="0,0,0,16"/>
                 <WrapPanel>
                   <Button x:Name="CheckGuiUpdate" Content="Проверить версию"/>
@@ -491,7 +514,7 @@
                 <TextBlock Text="Наборы приложений" FontSize="20" FontWeight="SemiBold"/>
                 <TextBlock x:Name="SetsCount" Text="Наборов пока нет" Foreground="#83B8FF" Margin="0,6,0,8"/>
                 <TextBlock Text="Отметьте несколько наборов. Приложения объединятся в одной очереди без повторов." Foreground="#9BACBF" TextWrapping="Wrap" FontSize="12" Margin="0,0,0,12"/>
-                <ListBox x:Name="AppSets" SelectionMode="Multiple" Height="156" Background="Transparent" BorderThickness="0" Foreground="#EDF1F8" ScrollViewer.HorizontalScrollBarVisibility="Disabled" ItemContainerStyle="{StaticResource SetListItem}">
+                <ListBox x:Name="AppSets" SelectionMode="Multiple" Height="156" Style="{StaticResource SetList}" ScrollViewer.HorizontalScrollBarVisibility="Disabled" ItemContainerStyle="{StaticResource SetListItem}">
                   <ListBox.ItemTemplate>
                     <DataTemplate>
                       <DockPanel>
