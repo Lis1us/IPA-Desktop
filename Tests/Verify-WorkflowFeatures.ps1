@@ -75,7 +75,10 @@ try{
  $handle=[IO.File]::Open($locked,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read);$rejected=$false
  try{try{[IpaDesktop.AtomicFile]::WriteUtf8($locked,'replacement')}catch{$rejected=$true}}finally{$handle.Dispose()}
  Assert ($rejected -and [IO.File]::ReadAllText($locked) -eq 'original' -and @(Get-ChildItem $temp -Filter 'atomic.json.*.tmp').Count -eq 0) 'Atomic save failure damaged original or retained temp file'
- Add-Type -ReferencedAssemblies (Join-Path $projectRoot 'IPA-Desktop.exe') -TypeDefinition @'
+ # Windows PowerShell compiles test helpers against a DLL copy of the application.
+ $testAssembly=Join-Path $temp 'IPA-Desktop-test.dll'
+ Copy-Item -LiteralPath (Join-Path $projectRoot 'IPA-Desktop.exe') -Destination $testAssembly -Force
+ Add-Type -ReferencedAssemblies @($testAssembly,'System.dll','System.Core.dll') -TypeDefinition @'
 using System;
 using System.Collections.Generic;
 using System.Threading;
