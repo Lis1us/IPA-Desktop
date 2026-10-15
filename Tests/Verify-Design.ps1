@@ -28,6 +28,18 @@ try {
  $window.Show()
  [IpaDesktop.WindowTheme]::Apply($window)
  $window.Dispatcher.Invoke([Action]{},[Windows.Threading.DispatcherPriority]::ApplicationIdle);$window.UpdateLayout()
+ # Check the actual text viewport, not only the outer search box height.
+ $query=$window.FindName('Query')
+ $query.Focus()|Out-Null
+ $query.SelectedText='MAX Макс 6739530834'
+ $window.Dispatcher.Invoke([Action]{},[Windows.Threading.DispatcherPriority]::ApplicationIdle);$window.UpdateLayout()
+ if($query.Text -ne 'MAX Макс 6739530834'){throw 'Search field did not retain entered text'}
+ $hostView=$query.Template.FindName('PART_ContentHost',$query)
+ if($hostView.ViewportHeight -lt $query.FontSize){throw 'Search text viewport is clipped by template padding'}
+ $caret=$query.GetRectFromCharacterIndex(0)
+ if($caret.IsEmpty -or $caret.Height -lt $query.FontSize -or $caret.Top -lt 0 -or $caret.Bottom -gt $query.ActualHeight){throw 'Search characters are outside the visible field'}
+ if($query.Foreground.Color.ToString() -ne '#FFEDF1F8'){throw 'Search text lost its light foreground'}
+ Write-Host ('PASS: entered Latin/Cyrillic search text is visible; viewport height '+$hostView.ViewportHeight)
  # Force each tab template to load and check minimum-window layout.
  $tabs=$window.FindName('Apps').Parent.Parent.Parent
  # Find the TabControl through the logical tree.
