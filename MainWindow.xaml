@@ -1,4 +1,4 @@
-<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Title="IPA Desktop · 0.1.23" Width="1160" Height="800" MinWidth="940" MinHeight="720" WindowStartupLocation="CenterScreen" Background="#10151F" Foreground="#EDF1F8" FontFamily="Segoe UI" FontSize="14" UseLayoutRounding="True" SnapsToDevicePixels="True">
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Title="IPA Desktop · 0.1.24" Width="1160" Height="800" MinWidth="940" MinHeight="720" WindowStartupLocation="CenterScreen" Background="#10151F" Foreground="#EDF1F8" FontFamily="Segoe UI" FontSize="14" UseLayoutRounding="True" SnapsToDevicePixels="True">
   <Window.Resources>
     <!-- Общие состояния кнопок, полей, вкладок и таблиц. -->
     <Style TargetType="Button">
@@ -246,7 +246,7 @@
           <Image x:Name="BrandIcon" Width="46" Height="46" Margin="0,0,12,0"/>
           <TextBlock Text="IPA Desktop" FontSize="30" FontWeight="SemiBold" VerticalAlignment="Center"/>
           <Border Background="#23354E" CornerRadius="6" Padding="8,4" Margin="12,0,0,0" VerticalAlignment="Center">
-            <TextBlock Text="0.1.23" Foreground="#AFCDF7" FontSize="12"/>
+            <TextBlock Text="0.1.24" Foreground="#AFCDF7" FontSize="12"/>
           </Border>
         </StackPanel>
         <TextBlock Text="Приложения для iPhone — поиск, загрузка и установка" Foreground="#9BACBF" Margin="0,6,0,20"/>
@@ -363,7 +363,6 @@
             <WrapPanel>
               <Button x:Name="RefreshFiles" Content="Обновить файлы"/>
               <Button x:Name="ImportFile" Content="Добавить IPA…"/>
-              <Button x:Name="DeleteFiles" Content="Удалить выбранные" Background="#713B48"/>
               <Button x:Name="Devices" Content="Найти iPhone" Background="#16704C"/>
               <ComboBox x:Name="DeviceList" DisplayMemberPath="Name" Margin="0,0,8,8"/>
             </WrapPanel>
@@ -383,8 +382,7 @@
           </DataGrid>
           <WrapPanel Grid.Row="2" Margin="0,12,0,0">
             <Button x:Name="AddInstall" Content="В выбранное"/>
-            <Button x:Name="InstallFiles" Content="Установить (0)" Background="#3878E5"/>
-            <TextBlock Text="Подключите iPhone и выберите устройство." Foreground="#9BACBF" VerticalAlignment="Center" Margin="4,0,0,8"/>
+            <TextBlock Text="ЛКМ по файлам — выбрать для установки или удаления." Foreground="#9BACBF" VerticalAlignment="Center" Margin="4,0,0,8"/>
           </WrapPanel>
           <Border Grid.Row="3" Background="#101A29" BorderBrush="#2B3E58" BorderThickness="1" CornerRadius="8" Padding="10,6">
             <Grid>
@@ -397,7 +395,7 @@
                 <Button x:Name="RetryInstalls" Content="Повторить ошибки (0)" DockPanel.Dock="Right" Padding="8,3" Margin="8,0,0,0" FontSize="12"/>
                 <Button x:Name="ForgetInstallErrors" Content="Сбросить ошибки" ToolTip="Убрать сохранённые ошибки без повторной установки" DockPanel.Dock="Right" Padding="8,3" Margin="8,0,0,0" FontSize="12"/>
                 <Button x:Name="ClearInstall" Content="Очистить" DockPanel.Dock="Right" Padding="8,3" Margin="8,0,0,0" FontSize="12"/>
-                <TextBlock x:Name="InstallCount" TextTrimming="CharacterEllipsis" Text="ЛКМ по файлу — добавить к установке" VerticalAlignment="Center" Foreground="#AFC6E7" FontSize="12"/>
+                <TextBlock x:Name="InstallCount" TextTrimming="CharacterEllipsis" Text="ЛКМ — выбрать для установки или удаления" VerticalAlignment="Center" Foreground="#AFC6E7" FontSize="12"/>
               </DockPanel>
               <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled" Margin="0,5,0,0" Height="54">
                 <ItemsControl x:Name="ChosenFiles">
@@ -418,17 +416,28 @@
                   </ItemsControl.ItemTemplate>
                 </ItemsControl>
               </ScrollViewer>
+              <WrapPanel Grid.Row="2" Margin="0,8,0,0">
+                <Button x:Name="InstallFiles" Content="Установить (0)" Background="#3878E5"/>
+                <Button x:Name="DeleteFiles" Content="Удалить выбранные IPA (0)" Background="#713B48" ToolTip="Переместить выбранные внизу IPA в корзину. Приложения на iPhone сохранятся."/>
+              </WrapPanel>
             </Grid>
           </Border>
         </Grid>
       </TabItem>
-      <TabItem Header="Обновления">
+      <TabItem Header="Настройки">
         <ScrollViewer VerticalScrollBarVisibility="Auto">
           <StackPanel Margin="24">
+            <Border Background="#1C293B" BorderBrush="#34445C" BorderThickness="1" CornerRadius="10" Padding="20" Margin="0,0,0,20">
+              <StackPanel>
+                <TextBlock Text="Уведомления" FontSize="20" FontWeight="SemiBold" Margin="0,0,0,12"/>
+                <CheckBox x:Name="SoundsEnabled" Content="Звуковой сигнал после успешного скачивания и установки" Foreground="#EDF1F8"/>
+                <TextBlock Text="Один сигнал после завершения всей очереди без ошибок. Используется системный звук Windows." Foreground="#9BACBF" TextWrapping="Wrap" Margin="0,8,0,0" FontSize="12"/>
+              </StackPanel>
+            </Border>
             <Border Background="#1C293B" BorderBrush="#34445C" BorderThickness="1" CornerRadius="10" Padding="20" Margin="0,0,0,24">
               <StackPanel>
                 <TextBlock Text="IPA Desktop" FontSize="22" FontWeight="SemiBold"/>
-                <TextBlock x:Name="GuiVersionStatus" Text="Установлена версия 0.1.23" Foreground="#8CBAFF" Margin="0,8,0,14"/>
+                <TextBlock x:Name="GuiVersionStatus" Text="Установлена версия 0.1.24" Foreground="#8CBAFF" Margin="0,8,0,14"/>
                 <CheckBox x:Name="CheckGuiUpdates" Content="Проверять новые версии программы при запуске" Foreground="#EDF1F8" Margin="0,0,0,16"/>
                 <WrapPanel>
                   <Button x:Name="CheckGuiUpdate" Content="Проверить версию"/>

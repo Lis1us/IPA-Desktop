@@ -5,6 +5,7 @@ Add-Type -AssemblyName PresentationFramework,PresentationCore,WindowsBase,System
 [Reflection.Assembly]::LoadFrom((Join-Path $projectRoot 'IPA-Desktop.exe')) | Out-Null
 $temp=Join-Path ([IO.Path]::GetTempPath()) ('ipa-test-'+[Guid]::NewGuid().ToString('N'))
 try {
+ if(!(New-Object IpaDesktop.State).SoundsEnabled){throw 'Default success sounds should be enabled'}
  $e=[IpaDesktop.Engine]::new($temp)
  $e.Save()
  $e2=[IpaDesktop.Engine]::new($temp)

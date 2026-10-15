@@ -7,6 +7,7 @@ using System.Globalization;
 using System.IO.Compression;
 using System.IO;
 using System.Linq;
+using System.Media;
 using System.Net.Http;
 using System.Net;
 using System.Runtime.InteropServices;
@@ -26,7 +27,7 @@ namespace IpaDesktop
     /// <summary>Единые сведения о версии и репозитории GUI; версия в XAML сверяется при выпуске.</summary>
     public static class AppInfo
     {
-        public const string Version = "0.1.23";
+        public const string Version = "0.1.24";
         public const string Repository = "iamdarkls/IPA-Desktop";
         public const string ReleasesUrl = "https://github.com/" + Repository + "/releases";
     }
@@ -591,9 +592,11 @@ namespace IpaDesktop
         public State()
         {
             AutoUpdate = true;
+            SoundsEnabled = true;
             AutoUpdateDeviceTools = true;
             CheckGuiUpdates = true;
         }
+        public bool SoundsEnabled { get; set; }
         public State Copy() { return (State)MemberwiseClone(); }
         public bool AutoUpdateDeviceTools { get; set; }
         public string PreviousDeviceCurrent { get; set; }
@@ -1648,6 +1651,27 @@ namespace IpaDesktop
                 if (refreshed != null) refreshed();
             }
             return result;
+        }
+    }
+}
+
+// Services/CompletionSound.cs
+namespace IpaDesktop
+{
+    /// <summary>Один системный сигнал после полностью успешной очереди; звук не влияет на результат операции.</summary>
+    public sealed class CompletionSound
+    {
+        readonly Action play;
+        public CompletionSound() : this(delegate { SystemSounds.Asterisk.Play(); }) { }
+        public CompletionSound(Action play) { this.play = play; }
+
+        /// <summary>Пустые, частично неудачные и отключённые уведомления остаются без звука.</summary>
+        public void Notify(bool enabled, int succeeded, int failed)
+        {
+            if (!enabled || succeeded <= 0 || failed != 0) return;
+            try { play(); }
+            catch (InvalidOperationException) { }
+            catch (Win32Exception) { }
         }
     }
 }

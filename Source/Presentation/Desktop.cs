@@ -108,6 +108,7 @@ namespace IpaDesktop
             lock (privateGate) if (reportPrivateValues.Count < 2000) reportPrivateValues.Add(value);
         }
         readonly QueueProgress queueProgress = new QueueProgress();
+        readonly CompletionSound completionSound = new CompletionSound();
         /// <summary>Показывает название приложения и позицию в текущем пакете.</summary>
         internal void BeginQueue(string kind, int index, int total, string app)
         {
@@ -116,7 +117,12 @@ namespace IpaDesktop
             RenderQueue();
         }
         /// <summary>Фиксирует итоговые счётчики, прекращая обновление завершённого прогресса.</summary>
-        internal void CompleteQueue(int success, int failed) { queueProgress.Complete(success, failed); RenderQueue(); }
+        internal void CompleteQueue(int success, int failed)
+        {
+            queueProgress.Complete(success, failed);
+            RenderQueue();
+            completionSound.Notify(engine.Settings.SoundsEnabled, success, failed);
+        }
         /// <summary>Отрисовывает снимок прогресса в UI-потоке без прямого доступа фоновых процессов к WPF.</summary>
         void RenderQueue()
         {
@@ -149,6 +155,7 @@ namespace IpaDesktop
         {
             C<TextBlock>("EngineVersion").Text = "Движок: " + (engine.Settings.Version ?? "не установлен");
             setting = true;
+            C<CheckBox>("SoundsEnabled").IsChecked = engine.Settings.SoundsEnabled;
             C<CheckBox>("AutoUpdate").IsChecked = engine.Settings.AutoUpdate;
             C<CheckBox>("AutoUpdateDeviceTools").IsChecked = engine.Settings.AutoUpdateDeviceTools;
             C<TextBlock>("DeviceToolsVersion").Text = (engine.Settings.DeviceSource == EngineUpdater.DeviceRepository ? "Наш комплект: " : "Прежний комплект: ") + (engine.Settings.DeviceVersion ?? (engine.Settings.Source == null ? engine.Settings.Version : null) ?? "не установлен");

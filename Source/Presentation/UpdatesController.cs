@@ -19,6 +19,18 @@ namespace IpaDesktop
         Release guiRelease;
         public UpdatesController(Desktop view, Engine engine) : base(view, engine)
         {
+            C<CheckBox>("SoundsEnabled").Click += delegate
+            {
+                bool previous = engine.Settings.SoundsEnabled;
+                engine.Settings.SoundsEnabled = C<CheckBox>("SoundsEnabled").IsChecked == true;
+                try { engine.Save(); }
+                catch (Exception e)
+                {
+                    engine.Settings.SoundsEnabled = previous;
+                    StateView();
+                    Error(e);
+                }
+            };
             C<CheckBox>("CheckGuiUpdates").IsChecked = engine.Settings.CheckGuiUpdates;
             C<CheckBox>("CheckGuiUpdates").Click += delegate
             {

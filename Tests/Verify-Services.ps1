@@ -69,7 +69,7 @@ try {
  $supportProbe=New-Object InstalledAppleSupportProbe
  $engine=New-Object IpaDesktop.Engine($temp,$runner,$supportProbe)
  $engine.Settings.Current='test'
- $engine.Settings.CheckGuiUpdates=$false;$engine.Settings.AutoUpdate=$false;$engine.Settings.AutoUpdateDeviceTools=$false
+ $engine.Settings.SoundsEnabled=$false;$engine.Settings.CheckGuiUpdates=$false;$engine.Settings.AutoUpdate=$false;$engine.Settings.AutoUpdateDeviceTools=$false
  $bins=Join-Path $temp 'Versions/test/windows_amd64'
  New-Item -ItemType Directory -Path $bins -Force|Out-Null
  foreach($name in @('ipatool.exe','idevice_id.exe','ideviceinfo.exe','ideviceinstaller.exe')){[IO.File]::WriteAllText((Join-Path $bins $name),'fixture')}
@@ -128,7 +128,7 @@ public static class InstallPathProbe {
  [IO.Directory]::CreateDirectory((Join-Path $temp 'Versions/old'))|Out-Null
  $engine.Settings.Previous='old';$engine.Settings.PreviousVersion='0';$engine.Rollback()
  $restored=New-Object IpaDesktop.Engine($temp)
- if($restored.Settings.CheckGuiUpdates -or $restored.Settings.AutoUpdate -or $restored.Settings.AutoUpdateDeviceTools){throw 'Settings/rollback lost user update preferences'}
+ if($restored.Settings.SoundsEnabled -or $restored.Settings.CheckGuiUpdates -or $restored.Settings.AutoUpdate -or $restored.Settings.AutoUpdateDeviceTools){throw 'Settings/rollback lost user update preferences'}
  $engine.Settings.Current='test';$engine.Save()
  $snapshot=New-Object IpaDesktop.AppleSupportSnapshot
  $snapshot.ServiceScanCompleted=$true;$snapshot.RegistryScanCompleted=$true
@@ -178,9 +178,10 @@ public static class InstallPathProbe {
    $found=FindRemoveButton ([Windows.Media.VisualTreeHelper]::GetChild($node,$i));if($found){return $found}
   }
  }
- function ClickRow($grid) {
-  $grid.ScrollIntoView($grid.Items[0]);Pump
-  $row=$grid.ItemContainerGenerator.ContainerFromIndex(0)
+ function ClickRow($grid,$index=0) {
+  $grid.SelectedItems.Clear();$grid.SelectedIndex=$index
+  $grid.ScrollIntoView($grid.Items[$index]);Pump
+  $row=$grid.ItemContainerGenerator.ContainerFromIndex($index)
   if(!$row){throw 'Controller row was not generated'}
   foreach($event in @([Windows.UIElement]::PreviewMouseLeftButtonDownEvent,[Windows.UIElement]::PreviewMouseLeftButtonUpEvent)){
    $mouse=New-Object Windows.Input.MouseButtonEventArgs([Windows.Input.Mouse]::PrimaryDevice,0,[Windows.Input.MouseButton]::Left)
@@ -207,6 +208,23 @@ public static class InstallPathProbe {
  $remove=FindRemoveButton ($window.FindName('ChosenFiles'))
  $remove.RaiseEvent((New-Object Windows.RoutedEventArgs([Windows.Controls.Button]::ClickEvent,$remove)));Pump
  if($window.FindName('ChosenFiles').Items.Count -ne 0){throw 'IPA remove button failed'}
+ # Two independent plain clicks build the action queue even though only one table row is selected.
+ ClickRow ($window.FindName('Files')) 0
+ ClickRow ($window.FindName('Files')) 1
+ if($window.FindName('ChosenFiles').Items.Count -ne 2 -or $window.FindName('Files').SelectedItems.Count -ne 1 -or !$window.FindName('DeleteFiles').IsEnabled -or !$window.FindName('DeleteFiles').Content.Contains('(2)')){throw 'Delete action still depends on Ctrl/table multi-selection'}
+ $deletePoint=$window.FindName('DeleteFiles').TranslatePoint((New-Object Windows.Point(0,0)),$window)
+ $chosenPoint=$window.FindName('ChosenFiles').TranslatePoint((New-Object Windows.Point(0,0)),$window)
+ if($deletePoint.Y -le $chosenPoint.Y){throw 'Delete action was not placed below selected IPA'}
+ Click 'ClearInstall';Pump
+ if($window.FindName('DeleteFiles').IsEnabled){throw 'Delete enabled with an empty action queue'}
+ # Use the actual checkbox event and reload the persisted settings.
+ $window.FindName('SoundsEnabled').IsChecked=$true;Click 'SoundsEnabled';Pump
+ $soundReload=New-Object IpaDesktop.Engine($temp)
+ if(!$soundReload.Settings.SoundsEnabled){throw 'Sound checkbox did not persist enabled preference'}
+ $window.FindName('SoundsEnabled').IsChecked=$false;Click 'SoundsEnabled';Pump
+ $soundReload=New-Object IpaDesktop.Engine($temp)
+ if($soundReload.Settings.SoundsEnabled){throw 'Sound checkbox did not persist disabled preference'}
+ Write-Host 'PASS: plain-click IPA action queue, bottom delete placement, empty-queue guard and sound checkbox persistence'
  if($window.FindName('Devices').Background.Color.ToString() -ne '#FF16704C'){throw 'Initial device-search color changed'}
  Click 'CheckAppleSupport';WaitIdle
  if(!$window.FindName('AppleSupportStatus').Text.Contains('Apple') -or $window.FindName('AppleSupportStatus').Foreground.Color.ToString() -ne '#FF81D4AD'){throw 'Apple support check did not render the running state'}

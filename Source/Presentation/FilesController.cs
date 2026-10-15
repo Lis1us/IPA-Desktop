@@ -54,7 +54,7 @@ namespace IpaDesktop
                 RefreshInstallChosen();
             });
             On("RefreshFiles", RefreshFiles);
-            On("DeleteFiles", delegate { DeleteRows(C<DataGrid>("Files").SelectedItems.Cast<LocalRow>().ToList()); });
+            On("DeleteFiles", delegate { DeleteRows(installChosen.Snapshot()); });
             On("ImportFile", delegate
             {
                 var dialog = new OpenFileDialog
@@ -165,6 +165,8 @@ namespace IpaDesktop
             C<Button>("ForgetInstallErrors").IsEnabled = !busy && failedInstalls.Count > 0;
             C<ItemsControl>("ChosenFiles").IsEnabled = !busy;
             C<Button>("AddInstall").IsEnabled = !busy && C<DataGrid>("Files").SelectedItems.Count > 0;
+            C<Button>("DeleteFiles").IsEnabled = !busy && installChosen.Count > 0;
+            C<Button>("DeleteFiles").Content = "Удалить выбранные IPA (" + installChosen.Count + ")";
             C<Button>("ClearInstall").IsEnabled = !busy && installChosen.Count > 0;
             C<Button>("InstallFiles").IsEnabled = !busy && installChosen.Count > 0 && C<ComboBox>("DeviceList").SelectedItem != null;
             C<Button>("Devices").Background = new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color) System.Windows.Media.ColorConverter.ConvertFromString(C<ComboBox>("DeviceList").Items.Count == 0 ? "#16704C" : "#243247"));
@@ -172,7 +174,7 @@ namespace IpaDesktop
         void RefreshInstallChosen()
         {
             C<ItemsControl>("ChosenFiles").ItemsSource = installChosen.Snapshot();
-            C<TextBlock>("InstallCount").Text = installChosen.Count == 0 ? "ЛКМ по файлу — добавить к установке" : "К установке: " + installChosen.Count;
+            C<TextBlock>("InstallCount").Text = installChosen.Count == 0 ? "ЛКМ — выбрать для установки или удаления" : "Выбрано IPA: " + installChosen.Count;
             C<Button>("InstallFiles").Content = "Установить (" + installChosen.Count + ")";
             ApplyActions();
         }

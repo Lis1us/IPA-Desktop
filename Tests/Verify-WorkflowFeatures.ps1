@@ -99,6 +99,13 @@ using System.Threading.Tasks;
 using IpaDesktop;
 public static class BatchContractCheck {
  public static void Verify() {
+  int signals=0;
+  var sound=new CompletionSound(delegate { signals++; });
+  sound.Notify(false,1,0);sound.Notify(true,0,0);sound.Notify(true,1,1);
+  if(signals!=0)throw new Exception("Disabled, empty or failed queue played success sound");
+  sound.Notify(true,3,0);
+  if(signals!=1)throw new Exception("Successful queue did not play exactly one sound");
+  new CompletionSound(delegate { throw new InvalidOperationException("no sound device"); }).Notify(true,1,0);
   int started=0, completed=0, failed=0;
   var result=BatchRunner.Run(new List<int>{1,2,3}, (item,ct)=>{if(item==2)throw new InvalidOperationException("fixture");return Task.FromResult(0);},
    (item,index)=>{started++;}, item=>{completed++;}, (item,error)=>{failed++;}, null, CancellationToken.None).GetAwaiter().GetResult();
@@ -114,6 +121,7 @@ public static class BatchContractCheck {
 }
 '@
  [BatchContractCheck]::Verify()
+ Write-Host 'PASS: completion sound policy and unavailable audio device'
  Write-Host 'PASS: atomic write failure, all-or-nothing set migration, batch error continuation and cancellation'
  $progress=New-Object IpaDesktop.QueueProgress
  $progress.Begin('Скачивание',2,3,'Example')

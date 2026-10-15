@@ -275,6 +275,7 @@ namespace IpaDesktop
             lock (privateGate) if (reportPrivateValues.Count < 2000) reportPrivateValues.Add(value);
         }
         readonly QueueProgress queueProgress = new QueueProgress();
+        readonly CompletionSound completionSound = new CompletionSound();
         /// <summary>Показывает название приложения и позицию в текущем пакете.</summary>
         internal void BeginQueue(string kind, int index, int total, string app)
         {
@@ -283,7 +284,12 @@ namespace IpaDesktop
             RenderQueue();
         }
         /// <summary>Фиксирует итоговые счётчики, прекращая обновление завершённого прогресса.</summary>
-        internal void CompleteQueue(int success, int failed) { queueProgress.Complete(success, failed); RenderQueue(); }
+        internal void CompleteQueue(int success, int failed)
+        {
+            queueProgress.Complete(success, failed);
+            RenderQueue();
+            completionSound.Notify(engine.Settings.SoundsEnabled, success, failed);
+        }
         /// <summary>Отрисовывает снимок прогресса в UI-потоке без прямого доступа фоновых процессов к WPF.</summary>
         void RenderQueue()
         {
@@ -316,6 +322,7 @@ namespace IpaDesktop
         {
             C<TextBlock>("EngineVersion").Text = "Движок: " + (engine.Settings.Version ?? "не установлен");
             setting = true;
+            C<CheckBox>("SoundsEnabled").IsChecked = engine.Settings.SoundsEnabled;
             C<CheckBox>("AutoUpdate").IsChecked = engine.Settings.AutoUpdate;
             C<CheckBox>("AutoUpdateDeviceTools").IsChecked = engine.Settings.AutoUpdateDeviceTools;
             C<TextBlock>("DeviceToolsVersion").Text = (engine.Settings.DeviceSource == EngineUpdater.DeviceRepository ? "Наш комплект: " : "Прежний комплект: ") + (engine.Settings.DeviceVersion ?? (engine.Settings.Source == null ? engine.Settings.Version : null) ?? "не установлен");
@@ -600,7 +607,7 @@ namespace IpaDesktop
                 RefreshInstallChosen();
             });
             On("RefreshFiles", RefreshFiles);
-            On("DeleteFiles", delegate { DeleteRows(C<DataGrid>("Files").SelectedItems.Cast<LocalRow>().ToList()); });
+            On("DeleteFiles", delegate { DeleteRows(installChosen.Snapshot()); });
             On("ImportFile", delegate
             {
                 var dialog = new OpenFileDialog
@@ -711,6 +718,8 @@ namespace IpaDesktop
             C<Button>("ForgetInstallErrors").IsEnabled = !busy && failedInstalls.Count > 0;
             C<ItemsControl>("ChosenFiles").IsEnabled = !busy;
             C<Button>("AddInstall").IsEnabled = !busy && C<DataGrid>("Files").SelectedItems.Count > 0;
+            C<Button>("DeleteFiles").IsEnabled = !busy && installChosen.Count > 0;
+            C<Button>("DeleteFiles").Content = "Удалить выбранные IPA (" + installChosen.Count + ")";
             C<Button>("ClearInstall").IsEnabled = !busy && installChosen.Count > 0;
             C<Button>("InstallFiles").IsEnabled = !busy && installChosen.Count > 0 && C<ComboBox>("DeviceList").SelectedItem != null;
             C<Button>("Devices").Background = new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color) System.Windows.Media.ColorConverter.ConvertFromString(C<ComboBox>("DeviceList").Items.Count == 0 ? "#16704C" : "#243247"));
@@ -718,7 +727,7 @@ namespace IpaDesktop
         void RefreshInstallChosen()
         {
             C<ItemsControl>("ChosenFiles").ItemsSource = installChosen.Snapshot();
-            C<TextBlock>("InstallCount").Text = installChosen.Count == 0 ? "ЛКМ по файлу — добавить к установке" : "К установке: " + installChosen.Count;
+            C<TextBlock>("InstallCount").Text = installChosen.Count == 0 ? "ЛКМ — выбрать для установки или удаления" : "Выбрано IPA: " + installChosen.Count;
             C<Button>("InstallFiles").Content = "Установить (" + installChosen.Count + ")";
             ApplyActions();
         }
@@ -1131,6 +1140,18 @@ namespace IpaDesktop
         Release guiRelease;
         public UpdatesController(Desktop view, Engine engine) : base(view, engine)
         {
+            C<CheckBox>("SoundsEnabled").Click += delegate
+            {
+                bool previous = engine.Settings.SoundsEnabled;
+                engine.Settings.SoundsEnabled = C<CheckBox>("SoundsEnabled").IsChecked == true;
+                try { engine.Save(); }
+                catch (Exception e)
+                {
+                    engine.Settings.SoundsEnabled = previous;
+                    StateView();
+                    Error(e);
+                }
+            };
             C<CheckBox>("CheckGuiUpdates").IsChecked = engine.Settings.CheckGuiUpdates;
             C<CheckBox>("CheckGuiUpdates").Click += delegate
             {
