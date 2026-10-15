@@ -107,7 +107,15 @@ try{
   if($window.OwnedWindows.Count -ne 0){throw 'Diagnostics dialog did not close'}
   $report=[PhoneContract]::Service.ReadAsync((New-Object IpaDesktop.DeviceRow -Property @{ID=[PhoneRunner]::Id;Name='Fixture'}),[Threading.CancellationToken]::None,[Action[string]]{param($text)}).GetAwaiter().GetResult()
   $preview=New-Object IpaDesktop.PhoneDiagnosticWindow($window)
-  $preview.Show($report);$preview.Window.Show();$preview.Window.UpdateLayout()
+  $preview.Show($report);$preview.Window.Show()
+  $preview.Window.Dispatcher.Invoke([Action]{},[Windows.Threading.DispatcherPriority]::ApplicationIdle);$preview.Window.UpdateLayout()
+  $preview.Copy.IsEnabled=$true;$preview.Save.IsEnabled=$true
+  if($preview.Values.Columns[1].ActualWidth -lt 150){throw 'Diagnostic values column is not visible'}
+  $cell=$preview.Values.Columns[1].GetCellContent($preview.Values.Items[0])
+  if(!$cell -or $cell.Text -ne '[СКРЫТО]'){throw 'Diagnostic value text was not rendered'}
+  $preview.Window.Width=700;$preview.Window.Height=520;$preview.Window.UpdateLayout()
+  if($preview.Values.Columns[1].ActualWidth -lt 150 -or $preview.Values.ActualHeight -lt 80){throw 'Diagnostic values collapsed at minimum window size'}
+  $preview.Window.Width=960;$preview.Window.Height=740;$preview.Window.UpdateLayout()
   $target=$preview.Window.Content
   if($preview.Values.ActualHeight -lt 100){throw 'Diagnostic table collapsed'}
   $bmp=New-Object Windows.Media.Imaging.RenderTargetBitmap([int]$target.ActualWidth,[int]$target.ActualHeight,96,96,[Windows.Media.PixelFormats]::Pbgra32)

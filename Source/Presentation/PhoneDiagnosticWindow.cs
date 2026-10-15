@@ -45,12 +45,12 @@ namespace IpaDesktop
             toolbar.Children.Add(Find); toolbar.Children.Add(Devices); toolbar.Children.Add(Read); toolbar.Children.Add(Cancel);
             Grid.SetRow(toolbar, 1); layout.Children.Add(toolbar);
             Values = new DataGrid { AutoGenerateColumns = false, IsReadOnly = true, CanUserAddRows = false,
-                CanUserSortColumns = false, EnableRowVirtualization = true, EnableColumnVirtualization = true };
+                CanUserSortColumns = false, EnableRowVirtualization = true, EnableColumnVirtualization = false };
             var wrap = new Style(typeof(TextBlock));
             wrap.Setters.Add(new Setter(TextBlock.TextWrappingProperty, TextWrapping.Wrap));
-            Values.Columns.Add(new DataGridTextColumn { Header = "Показатель", Binding = new Binding("Name"), Width = new DataGridLength(280), ElementStyle = wrap });
-            Values.Columns.Add(new DataGridTextColumn { Header = "Значение", Binding = new Binding("Value"), Width = new DataGridLength(1, DataGridLengthUnitType.Star), ElementStyle = wrap });
-            Values.Columns.Add(new DataGridTextColumn { Header = "Источник", Binding = new Binding("Source"), Width = new DataGridLength(180), ElementStyle = wrap });
+            Values.Columns.Add(new DataGridTextColumn { Header = "Показатель", Binding = new Binding("Name"), Width = new DataGridLength(250), ElementStyle = wrap });
+            Values.Columns.Add(new DataGridTextColumn { Header = "Значение", Binding = new Binding("Value"), Width = new DataGridLength(1, DataGridLengthUnitType.Star), MinWidth = 180, ElementStyle = wrap });
+            Values.Columns.Add(new DataGridTextColumn { Header = "Источник", Binding = new Binding("Source"), Width = new DataGridLength(140), ElementStyle = wrap });
             Grid.SetRow(Values, 2); layout.Children.Add(Values);
             var footer = new StackPanel { Margin = new Thickness(0, 12, 0, 0) };
             Status = new TextBlock { Text = "Найдите iPhone и нажмите «Проверить».", TextWrapping = TextWrapping.Wrap };
