@@ -380,10 +380,6 @@
               <DataGridTextColumn Header="Размер" Binding="{Binding Size}" Width="140"/>
             </DataGrid.Columns>
           </DataGrid>
-          <WrapPanel Grid.Row="2" Margin="0,12,0,0">
-            <Button x:Name="AddInstall" Content="В выбранное"/>
-            <TextBlock Text="ЛКМ по файлам — выбрать для установки или удаления." Foreground="#9BACBF" VerticalAlignment="Center" Margin="4,0,0,8"/>
-          </WrapPanel>
           <Border Grid.Row="3" Background="#101A29" BorderBrush="#2B3E58" BorderThickness="1" CornerRadius="8" Padding="10,6">
             <Grid>
               <Grid.RowDefinitions>
@@ -417,6 +413,7 @@
                 </ItemsControl>
               </ScrollViewer>
               <WrapPanel Grid.Row="2" Margin="0,8,0,0">
+                <Button x:Name="AddInstall" Content="В выбранное" ToolTip="Также можно добавлять файлы обычным левым кликом в таблице."/>
                 <Button x:Name="InstallFiles" Content="Установить (0)" Background="#3878E5"/>
                 <Button x:Name="DeleteFiles" Content="Удалить выбранные IPA (0)" Background="#713B48" ToolTip="Переместить выбранные внизу IPA в корзину. Приложения на iPhone сохранятся."/>
               </WrapPanel>
