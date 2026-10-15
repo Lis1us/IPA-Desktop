@@ -93,7 +93,7 @@ $temp=Join-Path ([IO.Path]::GetTempPath()) ('IPA-Firmware-'+[guid]::NewGuid().To
 try{
  [FirmwareContract]::Run($temp)
  $engine=New-Object IpaDesktop.Engine((Join-Path $temp 'state'))
- $desktop=New-Object IpaDesktop.Desktop($engine,$false)
+ $desktop=New-Object IpaDesktop.Desktop($engine,$false,$projectRoot)
  $window=$desktop.Window
  try{
   $window.Show();$window.FindName('FirmwareTab').IsSelected=$true;$window.UpdateLayout()
