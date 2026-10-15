@@ -69,9 +69,13 @@ jobs:
             $help=& "$folder/$name.exe" --help 2>&1
             if($LASTEXITCODE -ne 0 -or !$help){throw "$name help failed"}
             if($name -eq 'idevicerestore' -and (($help -join [Environment]::NewLine) -notmatch '--ipa-desktop-update-only')){throw 'Strict update guard missing'}
+            Write-Host ($name+' help OK outside MSYS2')
           }
           $log=& "$folder/idevicerestore.exe" --no-input --ipa-desktop-update-only --erase firmware-build/package 2>&1
           if($LASTEXITCODE -eq 0 -or ($log -join [Environment]::NewLine) -notmatch 'conflicting options for update-only'){throw 'Native engine accepted erase with update-only mode'}
+          Write-Host 'PASS: native update-only mode refuses conflicting erase option before device access'
+          # The rejected command intentionally returns 1; do not propagate it as the step exit code.
+          $global:LASTEXITCODE=0
       - uses: actions/upload-artifact@v4
         with:
           name: firmware-native
