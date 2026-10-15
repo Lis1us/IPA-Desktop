@@ -4,7 +4,7 @@ root=Path.cwd(); prefix=root/'firmware-build/prefix'; out=root/'firmware-build/p
 bins=out/'windows_amd64'; bins.mkdir(parents=True,exist_ok=True)
 mingw=Path(subprocess.check_output(['cygpath','-w','/mingw64'],text=True).strip())/'bin'
 system=Path(os.environ['SYSTEMROOT'])/'System32'
-queue=[prefix/'bin'/n for n in ('idevice_id.exe','ideviceinfo.exe','idevicerestore.exe','irecovery.exe')]
+queue=[prefix/'bin'/n for n in ('idevice_id.exe','ideviceinfo.exe','idevicediagnostics.exe','idevicerestore.exe','irecovery.exe')]
 seen=set()
 while queue:
     file=queue.pop(0)

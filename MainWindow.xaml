@@ -300,6 +300,7 @@
         <Button x:Name="AccountInfo" Content="Проверить аккаунт"/>
         <Button x:Name="Logout" Content="Выйти"/>
         <Button x:Name="OpenFolder" Content="Папка IPA"/>
+        <Button x:Name="OpenPhoneDiagnostics" Content="Диагностика iPhone…"/>
         <Button x:Name="ShowLastReport" Content="Итог операции" IsEnabled="False"/>
       </WrapPanel>
     </StackPanel>

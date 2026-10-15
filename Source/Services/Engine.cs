@@ -53,6 +53,7 @@ namespace IpaDesktop
                 return runner.Active;
             }
         }
+        public PhoneDiagnosticsService PhoneDiagnostics { get; private set; }
         public FirmwareService Firmware { get; private set; }
         public AppSetStore AppSets { get; private set; }
         public AppleSupportService AppleSupport { get; private set; }
@@ -114,6 +115,7 @@ namespace IpaDesktop
             updater = new EngineUpdater(settings, runner);
             AppleSupport = new AppleSupportService(appleSupportProbe);
             Devices = new DeviceService(runner, locator);
+            PhoneDiagnostics = new PhoneDiagnosticsService(runner, Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "FirmwareTools"));
             Firmware = new FirmwareService(runner, Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "FirmwareTools"));
             LocalFiles = new LocalAppRepository(Downloads);
             AppSets = new AppSetStore(root, Downloads);

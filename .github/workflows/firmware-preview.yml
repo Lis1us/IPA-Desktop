@@ -27,7 +27,7 @@ jobs:
         run: call Build.cmd < nul
       - name: Verify existing features and firmware guards without a physical device
         run: |
-          foreach($test in @('Verify','Verify-IpaMetadata','Verify-Updater','Verify-Design','Verify-Services','Verify-WorkflowFeatures','Verify-Firmware','Verify-FirmwareCatalog')){
+          foreach($test in @('Verify','Verify-IpaMetadata','Verify-Updater','Verify-Design','Verify-Services','Verify-WorkflowFeatures','Verify-Firmware','Verify-FirmwareCatalog','Verify-PhoneDiagnostics')){
             & powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File "Tests/$test.ps1"
             if($LASTEXITCODE -ne 0){throw "Failed: $test"}
           }
@@ -41,6 +41,7 @@ jobs:
           path: |
             IPA-Desktop-0.2.1-Windows.zip
             Firmware-Preview.png
+            Phone-Diagnostics-Preview.png
           retention-days: 14
   native:
     runs-on: windows-2022
@@ -89,7 +90,7 @@ jobs:
           $ErrorActionPreference='Stop'
           $env:PATH="$env:SystemRoot\System32;$env:SystemRoot"
           if(!(Test-Path firmware-build/package)){
-            Expand-Archive IPA-FirmwareTools-0.1.0-preview-Windows-x64.zip firmware-build/package
+            Expand-Archive IPA-FirmwareTools-0.1.1-preview-Windows-x64.zip firmware-build/package
           }
           $manifest=Get-Content firmware-build/package/sha256.json -Raw | ConvertFrom-Json
           foreach($entry in $manifest.PSObject.Properties){
@@ -97,7 +98,7 @@ jobs:
             if((Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash -ne $entry.Value){throw 'Firmware bundle hash mismatch'}
           }
           $folder=Join-Path $PWD 'firmware-build/package/windows_amd64'
-          foreach($name in @('idevice_id','ideviceinfo','irecovery','idevicerestore')){
+          foreach($name in @('idevice_id','ideviceinfo','idevicediagnostics','irecovery','idevicerestore')){
             $help=& "$folder/$name.exe" --help 2>&1
             if($LASTEXITCODE -ne 0 -or !$help){throw "$name help failed"}
             if($name -eq 'idevicerestore' -and (($help -join [Environment]::NewLine) -notmatch '--ipa-desktop-update-only')){throw 'Strict update guard missing'}
@@ -130,9 +131,9 @@ jobs:
         shell: pwsh
         run: |
           Expand-Archive artifacts/gui/IPA-Desktop-0.2.1-Windows.zip preview
-          Expand-Archive artifacts/native/IPA-FirmwareTools-0.1.0-preview-Windows-x64.zip preview/FirmwareTools
+          Expand-Archive artifacts/native/IPA-FirmwareTools-0.1.1-preview-Windows-x64.zip preview/FirmwareTools
           Copy-Item Docs/FIRMWARE-PREVIEW.md preview/ПРОЧИТАЙТЕ-ПЕРЕД-ПРОШИВКОЙ.md
-          Copy-Item artifacts/native/IPA-FirmwareTools-0.1.0-preview-Sources.zip preview/FirmwareTools/
+          Copy-Item artifacts/native/IPA-FirmwareTools-0.1.1-preview-Sources.zip preview/FirmwareTools/
           Compress-Archive preview/* IPA-Desktop-Firmware-Preview-Windows.zip
           Get-FileHash IPA-Desktop-Firmware-Preview-Windows.zip -Algorithm SHA256 | Format-List | Out-File SHA256.txt
       - uses: actions/upload-artifact@v4
@@ -143,3 +144,4 @@ jobs:
             IPA-Desktop-Firmware-Preview-Windows.zip
             SHA256.txt
             artifacts/gui/Firmware-Preview.png
+            artifacts/gui/Phone-Diagnostics-Preview.png

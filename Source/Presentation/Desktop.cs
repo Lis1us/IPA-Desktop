@@ -21,6 +21,10 @@ namespace IpaDesktop
         CancellationTokenSource cancellation;
         bool busy;
         bool firmwareCritical;
+        internal void CancelCurrentOperation()
+        {
+            if (cancellation != null && !firmwareCritical) cancellation.Cancel();
+        }
         internal void SetFirmwareCritical(bool value)
         {
             firmwareCritical = value;
@@ -37,6 +41,7 @@ namespace IpaDesktop
         AppSetsController appSets;
         StorageController storage;
         FirmwareController firmware;
+        PhoneDiagnosticsController phoneDiagnostics;
         public Window Window
         {
             get
@@ -87,6 +92,7 @@ namespace IpaDesktop
             if (appSets != null) appSets.RefreshActions();
             if (storage != null) storage.RefreshActions();
             if (firmware != null) firmware.RefreshActions();
+            if (phoneDiagnostics != null) phoneDiagnostics.RefreshActions();
             C<Button>("NoticeRetry").IsEnabled = !busy && noticeRetry != null && lastReport != null && lastReport.Failed > 0 &&
                 (lastReport.Kind == "Скачивание" ? C<Button>("RetryDownloads").IsEnabled : C<Button>("RetryInstalls").IsEnabled);
             C<Button>("ShowLastReport").IsEnabled = lastReport != null;
@@ -326,6 +332,7 @@ namespace IpaDesktop
             storage = new StorageController(this, engine);
             appSets = new AppSetsController(this, engine);
             firmware = new FirmwareController(this, engine);
+            phoneDiagnostics = new PhoneDiagnosticsController(this, engine);
             StateView();
             RefreshFiles();
             Action showReport = delegate

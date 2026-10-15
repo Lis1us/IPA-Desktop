@@ -20,3 +20,5 @@ MSYS2 dependency sources and recipes: https://github.com/msys2/MINGW-packages an
 
 Build: see .github/workflows/firmware-preview.yml and run bash Tools/FirmwareTools/build.sh from the repository root.
 No hardware restore is performed in CI. Windows launch tests cannot establish compatibility with every iPhone or iOS version.
+
+The bundle also includes idevicediagnostics for the read-only iPhone diagnostics window. The GUI only issues fixed information/IORegistry/GasGauge queries, never power-control commands.
