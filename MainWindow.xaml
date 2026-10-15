@@ -1,4 +1,4 @@
-<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Title="IPA Desktop · 0.1.22" Width="1160" Height="800" MinWidth="940" MinHeight="720" WindowStartupLocation="CenterScreen" Background="#10151F" Foreground="#EDF1F8" FontFamily="Segoe UI" FontSize="14" UseLayoutRounding="True" SnapsToDevicePixels="True">
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Title="IPA Desktop · 0.1.23" Width="1160" Height="800" MinWidth="940" MinHeight="720" WindowStartupLocation="CenterScreen" Background="#10151F" Foreground="#EDF1F8" FontFamily="Segoe UI" FontSize="14" UseLayoutRounding="True" SnapsToDevicePixels="True">
   <Window.Resources>
     <!-- Общие состояния кнопок, полей, вкладок и таблиц. -->
     <Style TargetType="Button">
@@ -110,6 +110,11 @@
       <Setter Property="Padding" Value="14,12"/>
       <Setter Property="FontWeight" Value="SemiBold"/>
       <Setter Property="BorderThickness" Value="0"/>
+    </Style>
+    <Style x:Key="LocalAppText" TargetType="TextBlock">
+      <Setter Property="Foreground" Value="#EDF1F8"/>
+      <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
+      <Setter Property="ToolTip" Value="{Binding FileDetails}"/>
     </Style>
     <Style TargetType="DataGridCell">
       <Setter Property="Padding" Value="14,0"/>
@@ -241,7 +246,7 @@
           <Image x:Name="BrandIcon" Width="46" Height="46" Margin="0,0,12,0"/>
           <TextBlock Text="IPA Desktop" FontSize="30" FontWeight="SemiBold" VerticalAlignment="Center"/>
           <Border Background="#23354E" CornerRadius="6" Padding="8,4" Margin="12,0,0,0" VerticalAlignment="Center">
-            <TextBlock Text="0.1.22" Foreground="#AFCDF7" FontSize="12"/>
+            <TextBlock Text="0.1.23" Foreground="#AFCDF7" FontSize="12"/>
           </Border>
         </StackPanel>
         <TextBlock Text="Приложения для iPhone — поиск, загрузка и установка" Foreground="#9BACBF" Margin="0,6,0,20"/>
@@ -370,7 +375,8 @@
           </StackPanel>
           <DataGrid x:Name="Files" Grid.Row="1" SelectionMode="Extended">
             <DataGrid.Columns>
-              <DataGridTextColumn Header="Файл" Binding="{Binding Name}" Width="*"/>
+              <DataGridTextColumn Header="Приложение" Binding="{Binding DisplayName}" Width="*" MinWidth="140" ElementStyle="{StaticResource LocalAppText}"/>
+              <DataGridTextColumn Header="Версия" Binding="{Binding Version}" Width="90"/>
               <DataGridTextColumn Header="Apple Account" Binding="{Binding AppleAccount}" Width="280"/>
               <DataGridTextColumn Header="Размер" Binding="{Binding Size}" Width="140"/>
             </DataGrid.Columns>
@@ -404,7 +410,7 @@
                     <DataTemplate>
                       <Border Background="#22354F" CornerRadius="6" Margin="0,0,8,2" Padding="9,4">
                         <StackPanel Orientation="Horizontal">
-                          <TextBlock Text="{Binding Name}" ToolTip="{Binding AppleAccount}" MaxWidth="260" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                          <TextBlock Text="{Binding DisplayName}" ToolTip="{Binding FileDetails}" MaxWidth="260" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
                           <Button Content="×" Tag="{Binding Path}" ToolTip="Убрать из выбранного" Padding="6,0" Margin="8,0,0,0" Background="#22354F"/>
                         </StackPanel>
                       </Border>
@@ -422,7 +428,7 @@
             <Border Background="#1C293B" BorderBrush="#34445C" BorderThickness="1" CornerRadius="10" Padding="20" Margin="0,0,0,24">
               <StackPanel>
                 <TextBlock Text="IPA Desktop" FontSize="22" FontWeight="SemiBold"/>
-                <TextBlock x:Name="GuiVersionStatus" Text="Установлена версия 0.1.22" Foreground="#8CBAFF" Margin="0,8,0,14"/>
+                <TextBlock x:Name="GuiVersionStatus" Text="Установлена версия 0.1.23" Foreground="#8CBAFF" Margin="0,8,0,14"/>
                 <CheckBox x:Name="CheckGuiUpdates" Content="Проверять новые версии программы при запуске" Foreground="#EDF1F8" Margin="0,0,0,16"/>
                 <WrapPanel>
                   <Button x:Name="CheckGuiUpdate" Content="Проверить версию"/>
@@ -517,7 +523,7 @@
             </StackPanel>
             <DataGrid x:Name="StorageFiles" Grid.Row="1" SelectionMode="Extended">
               <DataGrid.Columns>
-                <DataGridTextColumn Header="Файл" Binding="{Binding Name}" Width="*" MinWidth="140"/>
+                <DataGridTextColumn Header="Приложение" Binding="{Binding DisplayName}" Width="*" MinWidth="140" ElementStyle="{StaticResource LocalAppText}"/>
                 <DataGridTextColumn Header="Версия" Binding="{Binding Version}" Width="80"/>
                 <DataGridTextColumn Header="Apple Account" Binding="{Binding AppleAccount}" Width="180"/>
                 <DataGridTextColumn Header="Размер" Binding="{Binding Size}" Width="90"/>

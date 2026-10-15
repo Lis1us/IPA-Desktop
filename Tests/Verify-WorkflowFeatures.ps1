@@ -64,6 +64,19 @@ try{
  try{$stream=$zip.CreateEntry('iTunesMetadata.plist').Open();try{$bytes=[Convert]::FromBase64String('YnBsaXN0MDDSAQIDBFdhcHBsZUlkVml0ZW1JZF8QEWZpcnN0QGV4YW1wbGUuY29tEwAAAAGRtRRSCA0VHDAAAAAAAAABAQAAAAAAAAAFAAAAAAAAAAAAAAAAAAAAOQ==');$stream.Write($bytes,0,$bytes.Length)}finally{$stream.Dispose()}}finally{$zip.Dispose()}
  Assert ([IpaDesktop.IpaMetadata]::ReadDetails($integer).AppStoreID -eq '6739530834') 'Binary integer itemId was lost or truncated to 32 bits'
  $engine.AppSets.Delete('Base');Assert ($engine.AppSets.Load().Count -eq 1 -and [IO.File]::Exists($other)) 'Deleting a set removed IPA files'
+ # Short labels must not alter stored file names, paths or account/version metadata.
+ $label=New-Object IpaDesktop.LocalRow
+ $label.Name='Макс (Max)-6739530834-0123456789abcdef0123456789abcdef.ipa'
+ $label.Path=Join-Path $engine.Downloads $label.Name
+ Assert ($label.DisplayName -eq 'Макс (Max)') 'Generated filename suffix was shown as application title'
+ $label.AppName='MAX';$label.Version='1.2.3';$label.AppleAccount='first@example.com'
+ Assert ($label.DisplayName -eq 'MAX' -and $label.FileDetails.Contains($label.Name) -and $label.FileDetails.Contains($label.Path) -and $label.FileDetails.Contains('1.2.3') -and $label.FileDetails.Contains('first@example.com')) 'Short label or full IPA tooltip lost metadata'
+ $selection=New-Object IpaDesktop.InstallationSelection;$selection.Add($label)
+ Assert ($selection.Snapshot()[0].DisplayName -eq 'MAX' -and $selection.Snapshot()[0].Path -eq $label.Path) 'Install queue lost short label or real path'
+ $label.AppName=$null;$label.Name='My-App-123.ipa'
+ Assert ($label.DisplayName -eq 'My-App-123') 'Ordinary imported filename was shortened incorrectly'
+ Assert (($rows|Where-Object Path -eq $other).DisplayName -eq 'Example') 'IPA metadata title was not used'
+ Write-Host 'PASS: short metadata titles, exact filename fallback, full tooltips and unchanged installation paths'
  Write-Host 'PASS: account-independent ID sets, metadata IDs, legacy conversion, missing files, path bounds, XML/binary integers and account-isolated storage'
  # Batch legacy conversion is all-or-nothing, even when the second set is invalid.
  $legacy.Files=@('other-account.ipa')

@@ -26,7 +26,7 @@ namespace IpaDesktop
     /// <summary>Единые сведения о версии и репозитории GUI; версия в XAML сверяется при выпуске.</summary>
     public static class AppInfo
     {
-        public const string Version = "0.1.22";
+        public const string Version = "0.1.23";
         public const string Repository = "iamdarkls/IPA-Desktop";
         public const string ReleasesUrl = "https://github.com/" + Repository + "/releases";
     }
@@ -371,6 +371,27 @@ namespace IpaDesktop
     /// <summary>Строка локального IPA: путь, размер, версия, аккаунт и признак старой версии.</summary>
     public class LocalRow
     {
+        /// <summary>Название из IPA; при отсутствии метаданных убирает только наш точный служебный суффикс.</summary>
+        public string DisplayName
+        {
+            get
+            {
+                if (!String.IsNullOrWhiteSpace(AppName)) return AppName;
+                string title = System.IO.Path.GetFileNameWithoutExtension(Name ?? System.IO.Path.GetFileName(Path ?? ""));
+                var match = Regex.Match(title, @"^(?<title>.+)-[0-9]{1,20}-[0-9a-fA-F]{32}$");
+                return match.Success ? match.Groups["title"].Value : title;
+            }
+        }
+        /// <summary>Полные сведения доступны по наведению, включая настоящее имя файла и путь.</summary>
+        public string FileDetails
+        {
+            get
+            {
+                return DisplayName + Environment.NewLine + "Версия: " + (String.IsNullOrWhiteSpace(Version) ? "не указана" : Version) +
+                    Environment.NewLine + "Apple Account: " + (String.IsNullOrWhiteSpace(AppleAccount) ? "не указан" : AppleAccount) +
+                    Environment.NewLine + "Файл: " + Name + Environment.NewLine + Path;
+            }
+        }
         public long Bytes { get; set; }
         public string BundleID { get; set; }
         public string AppName { get; set; }
@@ -2387,7 +2408,7 @@ namespace IpaDesktop
                             metadataCache[path] = cached;
                         }
                         var metadata = cached.Item3;
-                        rows.Add(new LocalRow { Name = file.Name, Size = StorageAnalysis.Bytes(file.Length), Bytes = file.Length, Path = file.FullName, AppleAccount = metadata.Account, BundleID = metadata.BundleID, AppName = metadata.AppName ?? file.Name, Version = metadata.Version, Build = metadata.Build });
+                        rows.Add(new LocalRow { Name = file.Name, Size = StorageAnalysis.Bytes(file.Length), Bytes = file.Length, Path = file.FullName, AppleAccount = metadata.Account, BundleID = metadata.BundleID, AppName = metadata.AppName, Version = metadata.Version, Build = metadata.Build });
                     }
                     catch (FileNotFoundException) { }
                     catch (DirectoryNotFoundException) { }

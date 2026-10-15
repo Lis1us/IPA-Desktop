@@ -658,9 +658,9 @@ namespace IpaDesktop
                     foreach (var row in rows)
                     {
                         ct.ThrowIfCancellationRequested();
-                        try { engine.LocalFiles.Delete(row.Path); removed++; Log("Перемещено в корзину: " + row.Name); }
+                        try { engine.LocalFiles.Delete(row.Path); removed++; Log("Перемещено в корзину: " + row.DisplayName); }
                         catch (OperationCanceledException) { throw; }
-                        catch (Exception e) { failures.Add(row.Name + ": " + e.Message); }
+                        catch (Exception e) { failures.Add(row.DisplayName + ": " + e.Message); }
                     }
                 }, ct);
                 Log("Удалено из папки IPA: " + removed);
@@ -672,7 +672,7 @@ namespace IpaDesktop
         {
             var device = C<ComboBox>("DeviceList").SelectedItem as DeviceRow;
             if (device == null || rows.Count == 0) throw new Exception("Выберите устройство и IPA для установки.");
-            var summary = String.Join(Environment.NewLine, rows.Take(8).Select(x => x.Name));
+            var summary = String.Join(Environment.NewLine, rows.Take(8).Select(x => x.DisplayName));
             if (rows.Count > 8) summary += Environment.NewLine + "… и ещё " + (rows.Count - 8);
             if (MessageBox.Show(w, "Установить IPA (" + rows.Count + ") на " + device.Name + "?" + Environment.NewLine + Environment.NewLine + summary, "Установка", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) != MessageBoxResult.Yes) return;
             Work("Установка IPA…", async delegate(CancellationToken ct)
@@ -680,12 +680,12 @@ namespace IpaDesktop
                 await CheckSupport(ct);
                 var result = await BatchRunner.Run(rows,
                     (row, token) => engine.Devices.InstallAsync(device, row, token),
-                    (row, index) => { view.BeginQueue("Установка", index, rows.Count, row.Name); Log("Установка " + row.Name); },
+                    (row, index) => { view.BeginQueue("Установка", index, rows.Count, row.DisplayName); Log("Установка " + row.DisplayName); },
                     row => { installChosen.Remove(row.Path); failedInstalls.Remove(row.Path); RefreshInstallChosen(); },
-                    (row, error) => { failedInstalls.Add(row); Log("Ошибка установки " + row.Name + ": " + error.Message); },
+                    (row, error) => { failedInstalls.Add(row); Log("Ошибка установки " + row.DisplayName + ": " + error.Message); },
                     null, ct);
                 view.CompleteQueue(result.Succeeded, result.Failed.Count);
-                if (result.Failed.Count > 0) throw new Exception("Не удалось установить: " + String.Join(", ", result.Failed.Select(x => x.Name)) + ". Кнопка «Повторить ошибки» повторит только эти IPA.");
+                if (result.Failed.Count > 0) throw new Exception("Не удалось установить: " + String.Join(", ", result.Failed.Select(x => x.DisplayName)) + ". Кнопка «Повторить ошибки» повторит только эти IPA.");
             });
         }
         /// <summary>Обновляет статус компонентов Apple из отдельного сервиса проверки Windows.</summary>
@@ -707,7 +707,7 @@ namespace IpaDesktop
         {
             C<Button>("RetryInstalls").IsEnabled = !busy && failedInstalls.Count > 0 && C<ComboBox>("DeviceList").SelectedItem != null;
             C<Button>("RetryInstalls").Content = "Повторить ошибки (" + failedInstalls.Count + ")";
-            C<Button>("RetryInstalls").ToolTip = String.Join(Environment.NewLine, failedInstalls.Snapshot().Select(x => x.Name));
+            C<Button>("RetryInstalls").ToolTip = String.Join(Environment.NewLine, failedInstalls.Snapshot().Select(x => x.DisplayName));
             C<Button>("ForgetInstallErrors").IsEnabled = !busy && failedInstalls.Count > 0;
             C<ItemsControl>("ChosenFiles").IsEnabled = !busy;
             C<Button>("AddInstall").IsEnabled = !busy && C<DataGrid>("Files").SelectedItems.Count > 0;

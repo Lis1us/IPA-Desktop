@@ -21,7 +21,7 @@ try {
  $window.FindName('Download').Content='Download ('+$chosen.Count+')'
  $localRows=@()
  foreach($name in @('MAX.ipa','Telegram.ipa')) {
-  $file=New-Object IpaDesktop.LocalRow;$file.Name=$name;$file.Path='C:\Apps\'+$name;$file.AppleAccount='example@icloud.com';$file.Size='100 MB';$localRows+=$file
+  $file=New-Object IpaDesktop.LocalRow;$file.Name=([IO.Path]::GetFileNameWithoutExtension($name)+'-6739530834-0123456789abcdef0123456789abcdef.ipa');$file.AppName=[IO.Path]::GetFileNameWithoutExtension($name);$file.Version='1.2.3';$file.Path='C:\Apps\'+$name;$file.AppleAccount='example@icloud.com';$file.Size='100 MB';$localRows+=$file
  }
  $window.FindName('Files').ItemsSource=$localRows
  $window.FindName('ChosenFiles').ItemsSource=$localRows
@@ -82,6 +82,13 @@ try {
   $button.RaiseEvent((New-Object Windows.RoutedEventArgs([Windows.Controls.Button]::ClickEvent,$button)))
   if($script:removedKey -ne [string]$button.Tag){throw 'Remove button did not deliver the correct ID/path'}
  }
+ # Check the rendered file column and its tooltip, not only the model.
+ $tabs.SelectedIndex=1
+ $window.Dispatcher.Invoke([Action]{},[Windows.Threading.DispatcherPriority]::ApplicationIdle);$window.UpdateLayout()
+ $fileGrid=$window.FindName('Files');$fileCell=$fileGrid.Columns[0].GetCellContent($fileGrid.Items[0])
+ if($fileCell.Text -ne 'MAX' -or !$fileCell.ToolTip.Contains($localRows[0].Name)){throw 'File grid did not render short name with full filename tooltip'}
+ if($fileGrid.Columns[1].Header -ne 'Версия'){throw 'File grid version column is missing'}
+ Write-Host 'PASS: rendered file grid short title, complete tooltip and version column'
  Write-Host 'PASS: remove button clicks through both actual WPF item templates'
  $journal=$window.FindName('Journal');$buffer=New-Object IpaDesktop.BufferedJournal
  [IpaDesktop.JournalView]::Attach($journal,$buffer)
