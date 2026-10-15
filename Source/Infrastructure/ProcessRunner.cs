@@ -63,14 +63,14 @@ namespace IpaDesktop
             return b.Append('"').ToString();
         }
         /// <summary>Запускает процесс в фоне; отмена завершает дочерний процесс, а ожидание и чтение вывода ограничены.</summary>
-        public Task<Result> Run(string exe, string[] args, CancellationToken token, bool visible, bool publish)
+        public Task<Result> Run(string exe, string[] args, CancellationToken token, bool visible, bool publish, string workingDirectory = null)
         {
             return Task.Run(delegate
             {
                 token.ThrowIfCancellationRequested();
                 var si = new ProcessStartInfo(exe, String.Join(" ", args.Select(Quote)))
                 {
-                    WorkingDirectory = Downloads, UseShellExecute = false, CreateNoWindow = !visible
+                    WorkingDirectory = workingDirectory ?? Downloads, UseShellExecute = false, CreateNoWindow = !visible
                 };
                 si.EnvironmentVariables["PATH"] = Path.GetDirectoryName(exe) + ";" + Environment.GetEnvironmentVariable("PATH");
                 if (!visible)

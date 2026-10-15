@@ -95,10 +95,15 @@ namespace IpaDesktop
         public async Task InstallAsync(DeviceRow device, LocalRow file, CancellationToken ct)
         {
             if (!File.Exists(file.Path)) throw new IOException("IPA-файл больше не существует.");
-            ToolResponse.Ensure(await runner.Run(locator.Find("ideviceinstaller*.exe"), new[]
+            // CLI получает только ASCII-путь; Unicode-каталог передаётся через CreateProcessW.
+            // Это обходит несовместимость ANSI argv установщика и UTF-8 путей libzip.
+            using (var package = await InstallationPackage.CreateAsync(file.Path, ct))
             {
-                "--udid", device.ID, "install", file.Path
-            }, ct, false, true));
+                ToolResponse.Ensure(await runner.Run(locator.Find("ideviceinstaller*.exe"), new[]
+                {
+                    "--udid", device.ID, "install", package.RelativePath
+                }, ct, false, true, package.WorkingDirectory));
+            }
         }
     }
 }

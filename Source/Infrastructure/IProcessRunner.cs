@@ -26,6 +26,6 @@ namespace IpaDesktop
         {
             get;
         }
-        Task<Result> Run(string executable, string[] arguments, CancellationToken cancellation, bool visible, bool publish);
+        Task<Result> Run(string executable, string[] arguments, CancellationToken cancellation, bool visible, bool publish, string workingDirectory = null);
     }
 }

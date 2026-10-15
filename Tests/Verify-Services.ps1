@@ -29,13 +29,27 @@ public sealed class RecordingProcessRunner : IProcessRunner
 {
     readonly object gate = new object();
     public readonly List<string[]> Calls = new List<string[]>();
+    public string LastPackage;
+    public string LastWorkingDirectory;
+    public bool FailInstall;
+    public CancellationTokenSource CancelInstall;
     public Action<string> Log { get; set; }
     public Process Active { get { return null; } }
     public RecordingProcessRunner() { Log = delegate { }; }
-    public Task<Result> Run(string exe, string[] args, CancellationToken ct, bool visible, bool publish)
+    public Task<Result> Run(string exe, string[] args, CancellationToken ct, bool visible, bool publish, string workingDirectory = null)
     {
         ct.ThrowIfCancellationRequested();
         lock (gate) { Calls.Add((string[])args.Clone()); }
+        if (args.Length == 4 && args[2] == "install")
+        {
+            LastWorkingDirectory = workingDirectory;
+            if (String.IsNullOrEmpty(workingDirectory) || Path.IsPathRooted(args[3])) throw new Exception("Expected relative IPA path with explicit working directory");
+            foreach (char c in args[3]) if (c > 127) throw new Exception("Non-ASCII install argument");
+            LastPackage = Path.Combine(workingDirectory, args[3]);
+            if (!File.Exists(LastPackage) || File.ReadAllText(LastPackage) != "fixture") throw new Exception("Staged IPA content is unavailable");
+            if (CancelInstall != null) { CancelInstall.Cancel(); ct.ThrowIfCancellationRequested(); }
+            if (FailInstall) return Task.FromResult(new Result { Code = 1, Output = "fixture install failure" });
+        }
         string output = "{\"success\":true}";
         if (Path.GetFileName(exe) == "idevice_id.exe")
             output = "00008030-0000111ABC000DEF\n00008030-0000111ABC000ABC\n";
@@ -73,7 +87,43 @@ try {
  if($files.Count -ne 2){throw 'Local repository did not list IPA files'}
  $engine.Devices.InstallAsync($devices[0],$files[0],[Threading.CancellationToken]::None).GetAwaiter().GetResult()|Out-Null
  $call=$runner.Calls[$runner.Calls.Count-1]
- if($call[0] -ne '--udid' -or $call[1] -ne $devices[0].ID -or $call[3] -ne $files[0].Path){throw 'Installation service used label instead of UDID/path'}
+ if($call[0] -ne '--udid' -or $call[1] -ne $devices[0].ID -or [IO.File]::Exists($runner.LastPackage) -or [IO.Directory]::Exists([IO.Path]::GetDirectoryName($runner.LastPackage))){throw 'Installation lost UDID or retained temporary package'}
+ # Exercise Unicode file names and parent folders, independent of 8.3 aliases.
+ $unicodeDir=Join-Path $temp 'Пользователь Кириллица'
+ [IO.Directory]::CreateDirectory($unicodeDir)|Out-Null
+ $unicodeFile=Join-Path $unicodeDir 'АЗС Лукойл Макс.ipa'
+ [IO.File]::WriteAllText($unicodeFile,'fixture')
+ $unicodeRow=New-Object IpaDesktop.LocalRow;$unicodeRow.Path=$unicodeFile
+ foreach($mode in @('success','failure','cancel')) {
+  $runner.FailInstall=($mode -eq 'failure');$cancel=New-Object Threading.CancellationTokenSource
+  $runner.CancelInstall=$null;if($mode -eq 'cancel'){$runner.CancelInstall=$cancel}
+  $rejected=$false
+  try {try{$engine.Devices.InstallAsync($devices[0],$unicodeRow,$cancel.Token).GetAwaiter().GetResult()|Out-Null}catch{$rejected=$true}}
+  finally {$runner.CancelInstall=$null;$cancel.Dispose()}
+  if(($mode -eq 'success') -eq $rejected){throw ('Unexpected install outcome: '+$mode)}
+  if([IO.File]::ReadAllText($unicodeFile) -ne 'fixture' -or @(Get-ChildItem -LiteralPath $unicodeDir -Directory -Filter '.install-*').Count -ne 0){throw ('Installation damaged source or leaked temporary files: '+$mode)}
+ }
+ $runner.FailInstall=$false
+ # Run a real child process from a Unicode working directory.
+ $probe=Join-Path $temp 'install-path-probe.exe'
+ Add-Type -OutputAssembly $probe -OutputType ConsoleApplication -TypeDefinition @'
+using System;
+using System.IO;
+public static class InstallPathProbe {
+ public static int Main(string[] args) {
+  if(args.Length!=1 || Path.IsPathRooted(args[0]))return 2;
+  foreach(char c in args[0])if(c>127)return 3;
+  return File.ReadAllText(args[0])=="fixture" ? 0 : 4;
+ }
+}
+'@
+ $package=[IpaDesktop.InstallationPackage]::CreateAsync($unicodeFile,[Threading.CancellationToken]::None).GetAwaiter().GetResult()
+ try {
+  $realRunner=New-Object IpaDesktop.ProcessRunner($temp)
+  $probeResult=$realRunner.Run($probe,[string[]]@($package.RelativePath),[Threading.CancellationToken]::None,$false,$false,$package.WorkingDirectory).GetAwaiter().GetResult()
+  if($probeResult.Code -ne 0){throw 'Real Windows child process could not read Unicode-directory IPA through ASCII relative path'}
+ }finally{$package.Dispose()}
+ Write-Host 'PASS: real child process Unicode working directory, Cyrillic IPA, ASCII arguments, success/failure/cancel cleanup and original preservation'
  $engine.Save()
  [IO.Directory]::CreateDirectory((Join-Path $temp 'Versions/old'))|Out-Null
  $engine.Settings.Previous='old';$engine.Settings.PreviousVersion='0';$engine.Rollback()
