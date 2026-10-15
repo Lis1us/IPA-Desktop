@@ -34,6 +34,9 @@ namespace IpaDesktop
             }
         }
         bool catalogChecked;
+        readonly SemaphoreSlim searchGate = new SemaphoreSlim(1, 1);
+        readonly Dictionary<string, Tuple<long, long, List<AppRow>>> parsedFiles =
+            new Dictionary<string, Tuple<long, long, List<AppRow>>>(StringComparer.OrdinalIgnoreCase);
         public Action<string> Log
         {
             get;
@@ -48,8 +51,33 @@ namespace IpaDesktop
             };
         }
         /// <summary>Ищет по каталогам асинхронно и учитывает токен отмены.</summary>
-        public async Task<List<AppRow>> SearchAsync(string query, CancellationToken ct)
+        public Task<List<AppRow>> SearchAsync(string query, CancellationToken ct)
         {
+            // Чтение и разбор файлов не выполняются в UI-потоке даже на повторном поиске без HTTP.
+            return Task.Run(async delegate
+            {
+                await searchGate.WaitAsync(ct);
+                try { return await SearchCore(query, ct); }
+                finally { searchGate.Release(); }
+            }, ct);
+        }
+        /// <summary>Переиспользует разобранный каталог до изменения размера или времени записи файла.</summary>
+        List<AppRow> ReadCatalog(string path)
+        {
+            var file = new FileInfo(path);
+            if (!file.Exists) { parsedFiles.Remove(path); return new List<AppRow>(); }
+            Tuple<long, long, List<AppRow>> cached;
+            if (!parsedFiles.TryGetValue(path, out cached) || cached.Item1 != file.Length || cached.Item2 != file.LastWriteTimeUtc.Ticks)
+            {
+                cached = Tuple.Create(file.Length, file.LastWriteTimeUtc.Ticks,
+                    ToolResponse.ParseCatalog(File.ReadAllText(path, Encoding.UTF8)));
+                parsedFiles[path] = cached;
+            }
+            return cached.Item3;
+        }
+        async Task<List<AppRow>> SearchCore(string query, CancellationToken ct)
+        {
+            ct.ThrowIfCancellationRequested();
             var folder = Path.Combine(Root, "Files");
             Directory.CreateDirectory(folder);
             var cache = Path.Combine(folder, "AppsList.txt");
@@ -70,9 +98,7 @@ namespace IpaDesktop
                             response.EnsureSuccessStatusCode();
                             var content = await response.Content.ReadAsStringAsync();
                             if (content.Length > 2000000 || ToolResponse.ParseCatalog(content).Count == 0) throw new IOException("Неожиданный формат каталога.");
-                            File.WriteAllText(cache + ".tmp", content, Encoding.UTF8);
-                            if (File.Exists(cache)) File.Replace(cache + ".tmp", cache, null);
-                            else File.Move(cache + ".tmp", cache);
+                            AtomicFile.WriteUtf8(cache, content);
                             Log("Каталог приложений обновлён из исходного репозитория.");
                         }
                     }
@@ -87,9 +113,12 @@ namespace IpaDesktop
                 catalogChecked = true;
             }
             var customPath = Path.Combine(folder, "AppsListCustom.txt");
-            var custom = File.Exists(customPath) ? ToolResponse.ParseCatalog(File.ReadAllText(customPath, Encoding.UTF8)) : new List<AppRow>();
-            var catalog = File.Exists(cache) ? ToolResponse.ParseCatalog(File.ReadAllText(cache, Encoding.UTF8)) : new List<AppRow>();
-            return ToolResponse.MatchCatalog(query, custom, catalog);
+            var custom = ReadCatalog(customPath);
+            var catalog = ReadCatalog(cache);
+            ct.ThrowIfCancellationRequested();
+            // В таблицу уходят копии только совпавших строк: UI не может испортить общий кэш.
+            return ToolResponse.MatchCatalog(query, custom, catalog)
+                .Select(x => new AppRow { ID = x.ID, Name = x.Name }).ToList();
         }
     }
 }

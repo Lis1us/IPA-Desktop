@@ -20,6 +20,43 @@ function NewIpa($folder,$name,$bundle,$version,$account,$binaryInfo=$null){
 }
 try{
  $engine=New-Object IpaDesktop.Engine($temp)
+ # Offline catalog fixture: no network or Apple account needed.
+ $catalogRoot=Join-Path $temp 'catalog-cache'
+ $catalogStore=New-Object IpaDesktop.SettingsStore($catalogRoot)
+ $catalogLocator=New-Object IpaDesktop.ToolLocator($catalogStore)
+ $catalog=New-Object IpaDesktop.AppCatalog($catalogStore,$catalogLocator)
+ $catalog.GetType().GetField('catalogChecked',[Reflection.BindingFlags]'Instance,NonPublic').SetValue($catalog,$true)
+ $catalogDir=Join-Path $catalogRoot 'Files';[IO.Directory]::CreateDirectory($catalogDir)|Out-Null
+ $catalogPath=Join-Path $catalogDir 'AppsList.txt';$customPath=Join-Path $catalogDir 'AppsListCustom.txt'
+ $catalogText=(1..2000|ForEach-Object{'Application '+$_+': '+(100000+$_)}) -join [Environment]::NewLine
+ [IO.File]::WriteAllText($catalogPath,$catalogText)
+ [IO.File]::WriteAllText($customPath,'Custom app: 100001')
+ $timer=[Diagnostics.Stopwatch]::StartNew()
+ $matches=$catalog.SearchAsync('app',[Threading.CancellationToken]::None).GetAwaiter().GetResult()
+ $cold=$timer.Elapsed.TotalMilliseconds
+ Assert ($matches.Count -eq 2000 -and $matches[0].Name -eq 'Custom app') 'Cached catalog lost custom priority or ID deduplication'
+ $matches[0].Name='mutated UI result'
+ # Exclusive handles make any repeated content read fail; metadata checks remain possible.
+ $lockedCatalog=[IO.File]::Open($catalogPath,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::None)
+ $lockedCustom=[IO.File]::Open($customPath,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::None)
+ try {
+  $timer.Restart()
+  $matches=$catalog.SearchAsync('app',[Threading.CancellationToken]::None).GetAwaiter().GetResult()
+  $warm=$timer.Elapsed.TotalMilliseconds
+  Assert ($matches.Count -eq 2000 -and $matches[0].Name -eq 'Custom app') 'Repeated search reread locked catalog or cache was mutated by UI'
+ }finally{$lockedCatalog.Dispose();$lockedCustom.Dispose()}
+ [IO.File]::WriteAllText($customPath,'Renamed custom fixture: 100001')
+ $matches=$catalog.SearchAsync('Renamed',[Threading.CancellationToken]::None).GetAwaiter().GetResult()
+ Assert ($matches.Count -eq 1 -and $matches[0].ID -eq '100001') 'Edited custom catalog did not invalidate cache'
+ [IO.File]::Delete($customPath)
+ $matches=$catalog.SearchAsync('Application 1',[Threading.CancellationToken]::None).GetAwaiter().GetResult()
+ Assert (@($matches|Where-Object ID -eq '100001').Count -eq 1) 'Deleting custom catalog did not restore base catalog entry'
+ $cancelCatalog=New-Object Threading.CancellationTokenSource;$cancelCatalog.Cancel();$rejected=$false
+ try {try{$catalog.SearchAsync('app',$cancelCatalog.Token).GetAwaiter().GetResult()|Out-Null}catch{$rejected=$true}}
+ finally {$cancelCatalog.Dispose()}
+ Assert $rejected 'Catalog ignored cancellation'
+ Write-Host ('PASS: catalog cache with locked source files, custom edits/deletion, result isolation and cancellation; 2000 rows cold={0:N2}ms warm={1:N2}ms' -f $cold,$warm)
+
  $old=NewIpa $engine.Downloads 'old.ipa' 'com.example.app' '1.9' 'first@example.com'
  $latest=NewIpa $engine.Downloads 'latest.ipa' 'com.example.app' '1.10' 'first@example.com'
  $other=NewIpa $engine.Downloads 'other-account.ipa' 'com.example.app' '1.0' 'second@example.com'

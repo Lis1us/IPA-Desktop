@@ -20,20 +20,7 @@ namespace IpaDesktop
             {
                 using (var zip = ZipFile.OpenRead(path))
                 {
-                    var entry = zip.GetEntry("iTunesMetadata.plist");
-                    if (entry == null) return "Не указан";
-                    if (entry.Length > Limit) return "Метаданные слишком велики";
-                    using (var source = entry.Open()) using (var target = new MemoryStream())
-                    {
-                        var buffer = new byte[8192];
-                        int count;
-                        while ((count = source.Read(buffer, 0, buffer.Length)) > 0)
-                        {
-                            if (target.Length + count > Limit) throw new InvalidDataException();
-                            target.Write(buffer, 0, count);
-                        }
-                        return ParseAccount(target.ToArray());
-                    }
+                    return ReadAccount(zip);
                 }
             } catch (IOException)
             {
@@ -52,6 +39,23 @@ namespace IpaDesktop
                 return "Не удалось прочитать";
             } catch (OverflowException)
             {
+                return "Не удалось прочитать";
+            }
+        }
+        /// <summary>Читает аккаунт из уже открытого архива, не перечитывая его центральный каталог.</summary>
+        static string ReadAccount(ZipArchive zip)
+        {
+            try
+            {
+                var entry = zip.GetEntry("iTunesMetadata.plist");
+                if (entry == null) return "Не указан";
+                if (entry.Length > Limit) return "Метаданные слишком велики";
+                return ParseAccount(EntryBytes(entry));
+            }
+            catch (UnauthorizedAccessException) { return "Нет доступа"; }
+            catch (Exception e)
+            {
+                if (!(e is IOException || e is InvalidDataException || e is XmlException || e is ArgumentException || e is OverflowException)) throw;
                 return "Не удалось прочитать";
             }
         }
@@ -106,11 +110,12 @@ namespace IpaDesktop
         /// <summary>Читает корневые метаданные и Info.plist основного приложения; расширения и Watch-приложения исключены.</summary>
         public static IpaDetails ReadDetails(string path)
         {
-            var details = new IpaDetails { Account = ReadAccount(path) };
+            var details = new IpaDetails { Account = "Не удалось прочитать" };
             try
             {
                 using (var zip = ZipFile.OpenRead(path))
                 {
+                    details.Account = ReadAccount(zip);
                     if (zip.Entries.Count > 30000) return details;
                     var metadata = EntryBytes(zip.GetEntry("iTunesMetadata.plist"));
                     details.AppStoreID = Field(Value(metadata, "itemId", "itemID", "softwareVersionItemId"));
@@ -130,6 +135,7 @@ namespace IpaDesktop
             }
             catch (Exception e)
             {
+                if (e is UnauthorizedAccessException) details.Account = "Нет доступа";
                 if (!(e is IOException || e is InvalidDataException || e is UnauthorizedAccessException || e is XmlException || e is ArgumentException || e is OverflowException)) throw;
             }
             return details;
