@@ -601,7 +601,7 @@
                   <Button x:Name="FirmwareSearch" Content="Найти прошивки"/>
                 </WrapPanel>
                 <CheckBox x:Name="FirmwareSignedOnly" IsChecked="True" Content="Только подписываемые" Foreground="#EDF1F8" Margin="0,12,0,8"/>
-                <DataGrid x:Name="FirmwareReleases" Height="170" AutoGenerateColumns="False" IsReadOnly="True" SelectionMode="Single" CanUserAddRows="False" EnableRowVirtualization="True" EnableColumnVirtualization="True">
+                <DataGrid x:Name="FirmwareReleases" Height="170" AutoGenerateColumns="False" IsReadOnly="True" SelectionMode="Single" CanUserAddRows="False" EnableRowVirtualization="True" EnableColumnVirtualization="False">
                   <DataGrid.Columns>
                     <DataGridTextColumn Header="iOS" Binding="{Binding version}" Width="80"/>
                     <DataGridTextColumn Header="Сборка" Binding="{Binding buildid}" Width="110"/>
