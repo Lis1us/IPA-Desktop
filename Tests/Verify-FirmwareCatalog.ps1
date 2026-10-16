@@ -65,6 +65,33 @@ public static class CatalogContract {
    string target=Path.Combine(temp,"Скачанная прошивка.ipsw");
    catalog.DownloadAsync(release,target,CancellationToken.None,null).GetAwaiter().GetResult();
    if(Hash(File.ReadAllBytes(target),true)!=release.sha256sum)throw new Exception("Download not committed");
+   var storage=new FirmwareStorage(Path.Combine(temp,"Firmware"));
+   string managed=storage.FilePath(release);
+   if(!managed.StartsWith(storage.Root+Path.DirectorySeparatorChar)||managed==target)throw new Exception("Storage escaped dedicated directory");
+   Reject(()=>storage.FilePath(new FirmwareRelease{identifier="../escape",buildid="B"}),"unsafe storage name");
+   storage.Refresh(release);if(release.LocalStatus!="Не скачана")throw new Exception("Missing firmware status");
+   int before=transport.AppleCalls;
+   storage.AcquireAsync(catalog,release,CancellationToken.None,null).GetAwaiter().GetResult();
+   if(transport.AppleCalls!=before+1)throw new Exception("Missing firmware was not downloaded");
+   storage.Refresh(release);if(release.LocalStatus!="Есть на диске")throw new Exception("Downloaded status");
+   storage.AcquireAsync(catalog,release,CancellationToken.None,null).GetAwaiter().GetResult();
+   if(transport.AppleCalls!=before+1)throw new Exception("Verified local firmware was downloaded again");
+   byte[] damaged=(byte[])bytes.Clone();damaged[damaged.Length-1]^=1;File.WriteAllBytes(managed,damaged);
+   storage.AcquireAsync(catalog,release,CancellationToken.None,null).GetAwaiter().GetResult();
+   if(transport.AppleCalls!=before+2||Hash(File.ReadAllBytes(managed),true)!=release.sha256sum)throw new Exception("Same-size corruption was reused");
+   File.WriteAllText(managed,"partial");storage.Refresh(release);
+   if(release.LocalStatus!="Неполная копия")throw new Exception("Partial status");
+   transport.Redirect=true;
+   Reject(()=>storage.AcquireAsync(catalog,release,CancellationToken.None,null).GetAwaiter().GetResult(),"failed replacement");
+   if(File.ReadAllText(managed)!="partial")throw new Exception("Failed download destroyed existing copy");
+   transport.Redirect=false;
+   storage.AcquireAsync(catalog,release,CancellationToken.None,null).GetAwaiter().GetResult();
+   using(var stopped=new CancellationTokenSource()){
+    stopped.Cancel();int saved=transport.AppleCalls;
+    Reject(()=>storage.AcquireAsync(catalog,release,stopped.Token,null).GetAwaiter().GetResult(),"cancelled local verification");
+    if(transport.AppleCalls!=saved)throw new Exception("Cancellation started a download");
+   }
+   File.Delete(managed);storage.Refresh(release);if(release.LocalStatus!="Не скачана")throw new Exception("Deleted firmware stayed available");
    File.WriteAllText(target,"keep");
    release.sha256sum=new string('0',64);
    Reject(()=>catalog.DownloadAsync(release,target,CancellationToken.None,null).GetAwaiter().GetResult(),"bad SHA256 despite valid SHA1");
@@ -94,5 +121,5 @@ public static class CatalogContract {
 $temp=Join-Path ([IO.Path]::GetTempPath()) ('IPA-Catalog-'+[guid]::NewGuid().ToString('N'))
 try{
  [CatalogContract]::Run($temp)
- Write-Host 'PASS: IPSW model/version catalog, signing flags, wrong model, HTTPS host restrictions, SHA256 preference, SHA1 fallback, size, redirect refusal, midstream cancellation, manifest validation, atomic overwrite and partial cleanup'
+ Write-Host 'PASS: IPSW model/version catalog, signing flags, wrong model, HTTPS host restrictions, SHA256 preference, SHA1 fallback, size, redirect refusal, midstream cancellation, manifest validation, atomic overwrite and partial cleanup; dedicated firmware storage, offline reuse, corrupt-file replacement, cancellation and presence refresh'
 }finally{if(Test-Path $temp){Remove-Item $temp -Recurse -Force}}

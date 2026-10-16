@@ -92,6 +92,39 @@ namespace IpaDesktop
             return release != null && AppleUrl(release.url) && release.filesize > 0 && release.filesize <= 100L * 1024 * 1024 * 1024 &&
                 (Regex.IsMatch(release.sha256sum ?? "", "^[a-fA-F0-9]{64}$") || Regex.IsMatch(release.sha1sum ?? "", "^[a-fA-F0-9]{40}$"));
         }
+        /// <summary>Проверка локальной копии без сети; отменяется между блоками, не блокирует интерфейс.</summary>
+        public Task<bool> VerifyLocalAsync(FirmwareRelease release, string path, CancellationToken ct)
+        {
+            return Task.Run(delegate
+            {
+                ct.ThrowIfCancellationRequested();
+                if (!Downloadable(release) || !File.Exists(path)) return false;
+                try
+                {
+                    using (var input = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read))
+                    {
+                        if (input.Length != release.filesize) return false;
+                        bool sha256 = Regex.IsMatch(release.sha256sum ?? "", "^[a-fA-F0-9]{64}$");
+                        using (HashAlgorithm hash = sha256 ? (HashAlgorithm)SHA256.Create() : SHA1.Create())
+                        {
+                            byte[] bytes = new byte[1024 * 1024]; int count;
+                            while ((count = input.Read(bytes, 0, bytes.Length)) > 0)
+                            {
+                                ct.ThrowIfCancellationRequested();
+                                hash.TransformBlock(bytes, 0, count, bytes, 0);
+                            }
+                            hash.TransformFinalBlock(new byte[0], 0, 0);
+                            if (!String.Equals(BitConverter.ToString(hash.Hash).Replace("-", ""), sha256 ? release.sha256sum : release.sha1sum, StringComparison.OrdinalIgnoreCase)) return false;
+                        }
+                        var manifest = FirmwareManifest.Read(path);
+                        ct.ThrowIfCancellationRequested();
+                        return manifest.Products.Contains(release.identifier) && manifest.Version == release.version && manifest.Build == release.buildid;
+                    }
+                }
+                catch (IOException) { return false; }
+                catch (System.Xml.XmlException) { return false; }
+            }, ct);
+        }
         /// <summary>Считает хеш в потоке; только полностью проверенный IPSW заменяет файл назначения.</summary>
         public Task<string> DownloadAsync(FirmwareRelease release, string destination, CancellationToken ct, Action<FirmwareTransfer> progress)
         {

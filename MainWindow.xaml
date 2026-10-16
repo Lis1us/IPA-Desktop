@@ -608,10 +608,15 @@
                     <DataGridTextColumn Header="Подпись" Binding="{Binding Signing}" Width="*"/>
                     <DataGridTextColumn Header="Размер" Binding="{Binding Size}" Width="95"/>
                     <DataGridTextColumn Header="Дата" Binding="{Binding Date}" Width="110"/>
+                    <DataGridTextColumn Header="На компьютере" Binding="{Binding LocalStatus}" Width="145"/>
                   </DataGrid.Columns>
                 </DataGrid>
                 <TextBlock x:Name="FirmwareCatalogStatus" Text="Каталог IPSW.me. Можно скачать прошивку без подключённого телефона. Файлы — с серверов Apple." Foreground="#9BACBF" TextWrapping="Wrap" Margin="0,8,0,8"/>
-                <Button x:Name="FirmwareDownload" Content="Скачать выбранную IPSW…" HorizontalAlignment="Left"/>
+                <WrapPanel>
+                  <Button x:Name="FirmwareDownload" Content="Скачать выбранную IPSW"/>
+                  <Button x:Name="FirmwareOpenFolder" Content="Папка прошивок" Margin="8,0,0,0"/>
+                </WrapPanel>
+                <TextBlock Text="IPSW сохраняются в отдельную папку Firmware. Наличие проверяется по размеру; перед использованием — полный хеш и BuildManifest." Foreground="#9BACBF" TextWrapping="Wrap" Margin="0,8,0,0"/>
               </StackPanel>
             </Border>
             <WrapPanel Margin="0,16,0,8">

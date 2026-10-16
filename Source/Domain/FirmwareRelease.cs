@@ -22,6 +22,7 @@ namespace IpaDesktop
         public long filesize { get; set; }
         public bool signed { get; set; }
         public string releasedate { get; set; }
+        public string LocalStatus { get; set; }
         public string Signing { get { return signed ? "Подписывается" : "Не подписывается"; } }
         public string Size { get { return (filesize / 1073741824.0).ToString("0.00", CultureInfo.CurrentCulture) + " ГБ"; } }
         public string Date { get { DateTime value; return DateTime.TryParse(releasedate, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out value) ? value.ToString("dd.MM.yyyy") : "—"; } }

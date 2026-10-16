@@ -337,6 +337,7 @@ namespace IpaDesktop
         public long filesize { get; set; }
         public bool signed { get; set; }
         public string releasedate { get; set; }
+        public string LocalStatus { get; set; }
         public string Signing { get { return signed ? "Подписывается" : "Не подписывается"; } }
         public string Size { get { return (filesize / 1073741824.0).ToString("0.00", CultureInfo.CurrentCulture) + " ГБ"; } }
         public string Date { get { DateTime value; return DateTime.TryParse(releasedate, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out value) ? value.ToString("dd.MM.yyyy") : "—"; } }
@@ -2718,6 +2719,39 @@ namespace IpaDesktop
             return release != null && AppleUrl(release.url) && release.filesize > 0 && release.filesize <= 100L * 1024 * 1024 * 1024 &&
                 (Regex.IsMatch(release.sha256sum ?? "", "^[a-fA-F0-9]{64}$") || Regex.IsMatch(release.sha1sum ?? "", "^[a-fA-F0-9]{40}$"));
         }
+        /// <summary>Проверка локальной копии без сети; отменяется между блоками, не блокирует интерфейс.</summary>
+        public Task<bool> VerifyLocalAsync(FirmwareRelease release, string path, CancellationToken ct)
+        {
+            return Task.Run(delegate
+            {
+                ct.ThrowIfCancellationRequested();
+                if (!Downloadable(release) || !File.Exists(path)) return false;
+                try
+                {
+                    using (var input = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read))
+                    {
+                        if (input.Length != release.filesize) return false;
+                        bool sha256 = Regex.IsMatch(release.sha256sum ?? "", "^[a-fA-F0-9]{64}$");
+                        using (HashAlgorithm hash = sha256 ? (HashAlgorithm)SHA256.Create() : SHA1.Create())
+                        {
+                            byte[] bytes = new byte[1024 * 1024]; int count;
+                            while ((count = input.Read(bytes, 0, bytes.Length)) > 0)
+                            {
+                                ct.ThrowIfCancellationRequested();
+                                hash.TransformBlock(bytes, 0, count, bytes, 0);
+                            }
+                            hash.TransformFinalBlock(new byte[0], 0, 0);
+                            if (!String.Equals(BitConverter.ToString(hash.Hash).Replace("-", ""), sha256 ? release.sha256sum : release.sha1sum, StringComparison.OrdinalIgnoreCase)) return false;
+                        }
+                        var manifest = FirmwareManifest.Read(path);
+                        ct.ThrowIfCancellationRequested();
+                        return manifest.Products.Contains(release.identifier) && manifest.Version == release.version && manifest.Build == release.buildid;
+                    }
+                }
+                catch (IOException) { return false; }
+                catch (System.Xml.XmlException) { return false; }
+            }, ct);
+        }
         /// <summary>Считает хеш в потоке; только полностью проверенный IPSW заменяет файл назначения.</summary>
         public Task<string> DownloadAsync(FirmwareRelease release, string destination, CancellationToken ct, Action<FirmwareTransfer> progress)
         {
@@ -2961,6 +2995,44 @@ namespace IpaDesktop
                     finally { endCritical(); }
                 }
             }
+        }
+    }
+}
+
+// Services/FirmwareStorage.cs
+namespace IpaDesktop
+{
+    /// <summary>Отдельное хранилище IPSW: устойчивые имена по модели и сборке, без выбора папки при загрузке.</summary>
+    public sealed class FirmwareStorage
+    {
+        public string Root { get; private set; }
+        public FirmwareStorage(string root) { Root = Path.GetFullPath(root); }
+        public string FilePath(FirmwareRelease release)
+        {
+            if (release == null || !Regex.IsMatch(release.identifier ?? "", @"^iPhone[0-9]{1,3},[0-9]{1,3}$") ||
+                !Regex.IsMatch(release.buildid ?? "", "^[A-Za-z0-9]{1,32}$"))
+                throw new ArgumentException("Неверная модель или сборка IPSW.");
+            // Версия не входит в путь: модель + build однозначно определяют файл, независимо от подписи и URL.
+            return Path.Combine(Root, release.identifier + "_" + release.buildid + "_Restore.ipsw");
+        }
+        public bool Present(FirmwareRelease release)
+        {
+            var info = new FileInfo(FilePath(release));
+            return info.Exists && info.Length == release.filesize;
+        }
+        public void Refresh(FirmwareRelease release)
+        {
+            try { release.LocalStatus = Present(release) ? "Есть на диске" : File.Exists(FilePath(release)) ? "Неполная копия" : "Не скачана"; }
+            catch (IOException) { release.LocalStatus = "Нет доступа"; }
+            catch (UnauthorizedAccessException) { release.LocalStatus = "Нет доступа"; }
+        }
+        /// <summary>Существующий файл проверяется в фоне целиком; сеть нужна только для отсутствующей или неверной копии.</summary>
+        public async Task<string> AcquireAsync(FirmwareCatalog catalog, FirmwareRelease release, CancellationToken ct, Action<FirmwareTransfer> progress)
+        {
+            Directory.CreateDirectory(Root);
+            string target = FilePath(release);
+            if (await catalog.VerifyLocalAsync(release, target, ct).ConfigureAwait(false)) return target;
+            return await catalog.DownloadAsync(release, target, ct, progress).ConfigureAwait(false);
         }
     }
 }

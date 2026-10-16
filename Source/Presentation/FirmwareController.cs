@@ -14,6 +14,7 @@ namespace IpaDesktop
     public sealed class FirmwareController : WindowController
     {
         readonly FirmwareService service;
+        readonly FirmwareStorage storage;
         string path;
         FirmwareManifest manifest;
         bool critical;
@@ -21,7 +22,10 @@ namespace IpaDesktop
         List<FirmwareRelease> releases = new List<FirmwareRelease>();
         void FilterReleases()
         {
+            var selected = C<DataGrid>("FirmwareReleases").SelectedItem;
+            foreach (var release in releases) storage.Refresh(release);
             C<DataGrid>("FirmwareReleases").ItemsSource = releases.Where(x => C<CheckBox>("FirmwareSignedOnly").IsChecked != true || x.signed).ToList();
+            if (selected != null && C<DataGrid>("FirmwareReleases").Items.Contains(selected)) C<DataGrid>("FirmwareReleases").SelectedItem = selected;
             ApplyActions();
         }
         void SelectModel()
@@ -35,17 +39,14 @@ namespace IpaDesktop
         {
             var release = C<DataGrid>("FirmwareReleases").SelectedItem as FirmwareRelease;
             if (busy || !FirmwareCatalog.Downloadable(release)) return;
-            var picker = new SaveFileDialog { Filter = "Прошивка Apple (*.ipsw)|*.ipsw", AddExtension = true, DefaultExt = ".ipsw",
-                FileName = release.identifier + "_" + release.version.Replace('/', '_').Replace('\\', '_') + "_" + release.buildid + "_Restore.ipsw", OverwritePrompt = true };
-            if (picker.ShowDialog(w) != true) return;
             ClearCheck();
-            Work("Скачивание IPSW…", async ct =>
+            Work("Проверка и загрузка IPSW…", async ct =>
             {
                 view.StartReport("Скачивание IPSW", 1, null);
                 view.BeginQueue("Скачивание IPSW", 1, 1, "iOS " + release.version + " (" + release.buildid + ")");
                 try
                 {
-                    string downloaded = await catalog.DownloadAsync(release, picker.FileName, ct, delegate(FirmwareTransfer transfer)
+                    string downloaded = await storage.AcquireAsync(catalog, release, ct, delegate(FirmwareTransfer transfer)
                     {
                         string text = "Downloading: " + Math.Floor(100.0 * transfer.Bytes / transfer.Total).ToString(CultureInfo.InvariantCulture) +
                             "% (" + (transfer.Bytes / 1048576.0).ToString("0.0", CultureInfo.InvariantCulture) + "MB/" +
@@ -56,16 +57,25 @@ namespace IpaDesktop
                     path = downloaded;
                     C<TextBlock>("FirmwarePath").Text = path;
                     ClearCheck();
-                    C<TextBlock>("FirmwareInfo").Text = "IPSW скачана; размер, контрольная сумма и BuildManifest проверены. Нажмите «Проверить совместимость» для выбранного iPhone.";
+                    C<TextBlock>("FirmwareInfo").Text = "IPSW готова; размер, контрольная сумма и BuildManifest проверены. Нажмите «Проверить совместимость» для выбранного iPhone.";
                     view.ReportItem("iOS " + release.version, null); view.CompleteQueue(1, 0);
                 }
                 catch (OperationCanceledException) { throw; }
                 catch (Exception e) { view.ReportItem("iOS " + release.version, e); view.CompleteQueue(0, 1); throw; }
+                finally { FilterReleases(); }
             });
         }
         public FirmwareController(Desktop view, Engine engine) : base(view, engine)
         {
             service = engine.Firmware;
+            storage = new FirmwareStorage(Path.Combine(engine.Root, "Firmware"));
+            On("FirmwareOpenFolder", delegate
+            {
+                Directory.CreateDirectory(storage.Root);
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(storage.Root) { UseShellExecute = true });
+            });
+            // После удаления файла через Проводник обновляем наличие при возвращении в программу.
+            w.Activated += delegate { if (!busy) FilterReleases(); };
             C<ComboBox>("FirmwareDevices").SelectionChanged += delegate { ClearCheck(); SelectModel(); };
             C<RadioButton>("FirmwareErase").Checked += delegate { ClearCheck(); };
             C<RadioButton>("FirmwareUpdate").Checked += delegate { ClearCheck(); };
@@ -182,7 +192,10 @@ namespace IpaDesktop
             bool selected = C<ComboBox>("FirmwareDevices").SelectedItem is FirmwareDevice;
             C<Button>("FirmwareLoadModels").IsEnabled = !busy;
             C<Button>("FirmwareSearch").IsEnabled = !busy && C<ComboBox>("FirmwareModels").SelectedItem is FirmwareModel;
-            C<Button>("FirmwareDownload").IsEnabled = !busy && FirmwareCatalog.Downloadable(C<DataGrid>("FirmwareReleases").SelectedItem as FirmwareRelease);
+            var release = C<DataGrid>("FirmwareReleases").SelectedItem as FirmwareRelease;
+            C<Button>("FirmwareDownload").IsEnabled = !busy && FirmwareCatalog.Downloadable(release);
+            C<Button>("FirmwareDownload").Content = release != null && release.LocalStatus == "Есть на диске" ? "Использовать скачанную IPSW" : "Скачать выбранную IPSW";
+            C<Button>("FirmwareOpenFolder").IsEnabled = !busy;
             C<ComboBox>("FirmwareModels").IsEnabled = !busy;
             C<CheckBox>("FirmwareSignedOnly").IsEnabled = !busy;
             C<DataGrid>("FirmwareReleases").IsEnabled = !busy;
