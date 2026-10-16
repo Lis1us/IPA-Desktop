@@ -605,7 +605,7 @@
                   <DataGrid.Columns>
                     <DataGridTextColumn Header="iOS" Binding="{Binding version}" Width="80"/>
                     <DataGridTextColumn Header="Сборка" Binding="{Binding buildid}" Width="110"/>
-                    <DataGridTextColumn Header="Подпись" Binding="{Binding Signing}" Width="*"/>
+                    <DataGridTextColumn Header="Подпись" Binding="{Binding Signing}" Width="150"/>
                     <DataGridTextColumn Header="Размер" Binding="{Binding Size}" Width="95"/>
                     <DataGridTextColumn Header="Дата" Binding="{Binding Date}" Width="110"/>
                     <DataGridTextColumn Header="На компьютере" Binding="{Binding LocalStatus}" Width="145"/>
