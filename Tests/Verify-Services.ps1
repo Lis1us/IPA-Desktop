@@ -141,6 +141,45 @@ public static class WifiVersionContract {
  }
 }
 
+public sealed class GrowingDownloadTool : IAppToolClient {
+ public async Task<Result> RunAsync(string[] args,CancellationToken ct,bool publish){
+  string path=args[Array.IndexOf(args,"-o")+1]+".tmp";
+  try{
+   using(var file=new FileStream(path,FileMode.CreateNew,FileAccess.Write,FileShare.ReadWrite)){
+    for(int i=1;i<=3;i++){file.SetLength(i*1048576);file.Flush();await Task.Delay(1150,ct).ConfigureAwait(false);}
+   }
+   return new Result{Code=0,Output="{\"success\":true}"};
+  }finally{File.Delete(path);}
+ }
+}
+public static class DownloadMeterContract {
+ static void Assert(bool ok,string text){if(!ok)throw new Exception(text);}
+ public static void Run(string folder){
+  Directory.CreateDirectory(folder);
+  var meter=new FileTransferMeter();
+  Assert(!meter.Sample(1048576,0).BytesPerSecond.HasValue,"Speed invented from first sample");
+  var update=meter.Sample(3145728,2);Assert(update.BytesPerSecond==1048576,"Transfer rate calculation is wrong");
+  meter.Sample(3145728,3);meter.Sample(3145728,4);meter.Sample(3145728,5);Assert(meter.Sample(3145728,6).BytesPerSecond==0,"Stalled transfer kept stale speed");
+  Assert(!meter.Sample(1024,7).BytesPerSecond.HasValue,"Counter restart produced fake speed");
+  var progress=new QueueProgress();progress.Begin("Скачивание",1,2,"Test");
+  Assert(progress.Feed(update.Message),"Measured transfer was not accepted");progress.Feed("PROGRESS:50");
+  Assert(progress.Text.Contains("≈")&&progress.Text.Contains("МБ/с")&&Math.Abs(progress.Value-25)<0.01,"Percentage erased measured metrics or changed queue progress");
+  progress.Begin("Установка",1,1,"Test");Assert(!progress.Feed(update.Message),"File-download measurement leaked into install progress");
+  var downloads=new ApplicationDownloads(new GrowingDownloadTool(),folder);var messages=new List<string>();
+  downloads.Transfer=delegate(string text){lock(messages){messages.Add(text);}};
+  downloads.DownloadAsync(new DownloadItem{ID="123",Name="Test"},CancellationToken.None).GetAwaiter().GetResult();
+  lock(messages){Assert(messages.Count>=2&&messages.Exists(x=>x.StartsWith("FILE_TRANSFER:")&&!x.EndsWith(":?")),"Actual growing temporary file did not report speed");}
+  int count;lock(messages){count=messages.Count;}
+  using(var stop=new CancellationTokenSource()){
+   stop.CancelAfter(1250);bool cancelled=false;
+   try{downloads.DownloadAsync(new DownloadItem{ID="123",Name="Canceled"},stop.Token).GetAwaiter().GetResult();}catch(OperationCanceledException){cancelled=true;}
+   Assert(cancelled,"Download cancellation was swallowed");
+  }
+  lock(messages){count=messages.Count;}Thread.Sleep(1100);lock(messages){Assert(messages.Count==count,"Transfer monitor continued after completion or cancellation");}
+  Assert(Directory.GetFiles(folder,"*.tmp").Length==0,"Test download retained temporary files");
+ }
+}
+
 '@
 # Реальные схемы get-version-metadata: 1.1.8 без новых полей, 1.1.9 с minimumOSVersion, 1.2.0 с supportedPlatforms.
 $old=[IpaDesktop.ToolResponse]::VersionMetadataText([IpaDesktop.ToolResponse]::Object('{"displayVersion":"2.3","releaseDate":"2026-10-15","success":true}'))
@@ -158,6 +197,8 @@ $temp=Join-Path ([IO.Path]::GetTempPath()) ('ipa-oop-'+[Guid]::NewGuid().ToStrin
 $window=$null
 $originalContext=[Threading.SynchronizationContext]::Current
 try {
+ [DownloadMeterContract]::Run((Join-Path $temp 'download-meter'))
+ Write-Host 'PASS: measured file growth, rate window, stalled transfer, counter reset, percentage preservation, actual temporary-file sampling and monitor cleanup on success/cancel'
  [WifiVersionContract]::Run((Join-Path $temp 'wifi-contract'))
  Write-Host 'PASS: USB/Wi-Fi discovery isolation, partial discovery failure, network flags, connection identity, actual staged IPA compatibility, XML/binary minimum OS, platform rejection, cancellation, no silent fallback/retry, multiple versions and manual IDs'
  $runner=New-Object RecordingProcessRunner
@@ -437,6 +478,16 @@ public static class InstallPathProbe {
  $runner.FailDownload=$false;Click 'NoticeRetry';WaitIdle
  $report=$desktop.GetType().GetField('lastReport',[Reflection.BindingFlags]'Instance,NonPublic').GetValue($desktop)
  if($report.Failed -ne 0 -or $report.Succeeded -ne 1 -or $window.FindName('NoticeRetry').Visibility -ne 'Collapsed'){throw 'Banner retry did not replace the failed result with success'}
+ # Dedicated transfer metric remains visible independently of a long app title.
+ $meterQueue=$desktop.GetType().GetField('queueProgress',[Reflection.BindingFlags]'Instance,NonPublic').GetValue($desktop)
+ $meterQueue.Begin('Скачивание',1,2,('Длинное название приложения '*20))
+ $meterQueue.Feed('FILE_TRANSFER:2097152:1048576')|Out-Null
+ $meterQueue.Feed('PROGRESS:50')|Out-Null
+ $desktop.GetType().GetMethod('RenderQueue',[Reflection.BindingFlags]'Instance,NonPublic').Invoke($desktop,@())|Out-Null
+ Pump
+ if(!$window.FindName('TransferDetail').Text.Contains('≈') -or $window.FindName('TransferDetail').ActualWidth -lt 100){throw 'Download speed is hidden by long app title'}
+ $meterQueue.Reset();$desktop.GetType().GetMethod('RenderQueue',[Reflection.BindingFlags]'Instance,NonPublic').Invoke($desktop,@())|Out-Null
+ Write-Host 'PASS: dedicated download speed remains visible independently of long app names'
  # Exercise actual version-table controls, multiple manual IDs, metadata button and modal result.
  $versionTool=New-Object VersionTool
  $versionService=New-Object IpaDesktop.AppVersions($versionTool)

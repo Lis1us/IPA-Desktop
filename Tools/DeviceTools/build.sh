@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 root="$PWD"
+# Use available CPU cores with a conservative cap. A CI override must be a bounded integer.
+jobs="${IPA_DEVICE_JOBS:-$(getconf _NPROCESSORS_ONLN)}"
+case "$jobs" in ''|*[!0-9]*) echo 'IPA_DEVICE_JOBS must be an integer' >&2; exit 1;; esac
+if (( jobs < 1 )); then echo 'IPA_DEVICE_JOBS must be positive' >&2; exit 1; fi
+if (( jobs > 8 )); then jobs=8; fi
 prefix="$root/device-build/prefix"
 mkdir -p "$prefix" "$root/device-build/source" "$root/device-build/source-archives"
 export PATH="$prefix/bin:$PATH"
@@ -22,7 +27,7 @@ for project in libplist libimobiledevice-glue libusbmuxd libtatsu libimobiledevi
     libimobiledevice) options+=(--without-cython --without-readline --with-openssl);;
   esac
   ./configure "${options[@]}"
-  make -j2
+  make -j"$jobs"
   make install
   cd "$root"
 done

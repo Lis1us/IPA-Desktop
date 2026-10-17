@@ -546,7 +546,8 @@ namespace IpaDesktop
         /// <summary>Отрисовывает снимок прогресса в UI-потоке без прямого доступа фоновых процессов к WPF.</summary>
         void RenderQueue()
         {
-            C<TextBlock>("OperationDetail").Text = queueProgress.Text;
+            C<TextBlock>("OperationDetail").Text = queueProgress.StatusText;
+            C<TextBlock>("TransferDetail").Text = queueProgress.TransferText;
             C<TextBlock>("OperationDetail").ToolTip = queueProgress.Text;
             if (!queueProgress.Active) return;
             C<ProgressBar>("Progress").IsIndeterminate = busy && queueProgress.Indeterminate;

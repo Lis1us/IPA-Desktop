@@ -21,7 +21,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Test stable release discovery
-        run: python3 Tools/DeviceTools/test_updates.py
+        run: |
+          python3 Tools/DeviceTools/test_updates.py
+          python3 Tools/DeviceTools/test_package.py
       - name: Check stable upstream releases and prepare candidate
         id: prepare
         env:
@@ -65,6 +67,11 @@ jobs:
         run: |
           $ErrorActionPreference='Stop'
           $env:PATH="$env:SystemRoot\System32;$env:SystemRoot"
+          $manifest=Get-Content device-build/package/sha256.json -Raw | ConvertFrom-Json
+          foreach($entry in $manifest.PSObject.Properties){
+            $file=Join-Path (Join-Path $PWD 'device-build/package') $entry.Name
+            if((Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash -ne $entry.Value){throw 'Device package checksum mismatch'}
+          }
           $folder=Join-Path $PWD 'device-build/package/windows_amd64'
           foreach($name in @('idevice_id','ideviceinfo','ideviceinstaller')){
             $version=& "$folder/$name.exe" --version 2>&1
@@ -74,6 +81,7 @@ jobs:
             if($name -eq 'idevice_id' -and (($help -join "`n") -notmatch '--list')){throw 'Device listing CLI contract changed'}
             if($name -eq 'ideviceinfo' -and ((($help -join "`n") -notmatch '--udid') -or (($help -join "`n") -notmatch '--key'))){throw 'Device info CLI contract changed'}
             if($name -eq 'ideviceinstaller' -and (($help -join "`n") -notmatch 'install PATH')){throw 'Installer CLI contract changed'}
+            if(($help -join "`n") -notmatch '--network'){throw "$name network transport missing"}
             Write-Host "$name : $version"
           }
       - name: Persist tested upstream versions

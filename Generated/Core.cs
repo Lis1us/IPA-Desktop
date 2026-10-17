@@ -27,7 +27,7 @@ namespace IpaDesktop
     /// <summary>Единые сведения о версии и репозитории GUI; версия в XAML сверяется при выпуске.</summary>
     public static class AppInfo
     {
-        public const string Version = "0.2.5";
+        public const string Version = "0.2.6";
         public const string Repository = "iamdarkls/IPA-Desktop";
         public const string ReleasesUrl = "https://github.com/" + Repository + "/releases";
     }
@@ -320,6 +320,36 @@ namespace IpaDesktop
     }
 }
 
+// Domain/FileTransferMeter.cs
+namespace IpaDesktop
+{
+    /// <summary>Оценка записи по монотонным отсчётам размера одного файла, без вывода объёма из округлённых процентов.</summary>
+    public sealed class FileTransferMeter
+    {
+        readonly Queue<Tuple<double, long>> samples = new Queue<Tuple<double, long>>();
+        public void Reset() { samples.Clear(); }
+        public FileTransferSample Sample(long bytes, double seconds)
+        {
+            if (bytes < 0 || Double.IsNaN(seconds) || Double.IsInfinity(seconds) || seconds < 0) throw new ArgumentException("Некорректное измерение передачи.");
+            if (samples.Count > 0 && (seconds <= LastTime || bytes < LastBytes)) Reset();
+            samples.Enqueue(Tuple.Create(seconds, bytes)); LastTime = seconds; LastBytes = bytes;
+            while (samples.Count > 8 || (samples.Count > 1 && seconds - samples.Peek().Item1 > 3.5)) samples.Dequeue();
+            var first = samples.Peek(); double elapsed = seconds - first.Item1;
+            return new FileTransferSample { Bytes = bytes, BytesPerSecond = elapsed >= 0.5 ? (double?)(bytes - first.Item2) / elapsed : null };
+        }
+        double LastTime; long LastBytes;
+    }
+    public sealed class FileTransferSample
+    {
+        public long Bytes { get; set; }
+        public double? BytesPerSecond { get; set; }
+        public string Message
+        {
+            get { return "FILE_TRANSFER:" + Bytes.ToString(System.Globalization.CultureInfo.InvariantCulture) + ":" + (BytesPerSecond.HasValue ? BytesPerSecond.Value.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture) : "?"); }
+        }
+    }
+}
+
 // Domain/InstallationSelection.cs
 namespace IpaDesktop
 {
@@ -521,11 +551,25 @@ namespace IpaDesktop
     /// <summary>Потокобезопасное состояние прогресса; использует только метрики, реально полученные от утилиты.</summary>
     public sealed class TransferUpdate
     {
+        public bool IsMeasurement { get; set; }
         public double Percent { get; set; }
         public string Metrics { get; set; }
         public static TransferUpdate Parse(string line, bool installing)
         {
             if (line == null) return null;
+            var sample = Regex.Match(line, @"^FILE_TRANSFER:(\d+):(\?|\d+(?:\.\d+)?)$");
+            if (sample.Success)
+            {
+                long bytes; double rate;
+                if (!Int64.TryParse(sample.Groups[1].Value, out bytes)) return null;
+                string speed = "измерение скорости…";
+                if (sample.Groups[2].Value != "?")
+                {
+                    if (!Double.TryParse(sample.Groups[2].Value, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out rate) || Double.IsInfinity(rate)) return null;
+                    speed = "≈ " + (rate / 1048576.0).ToString("0.0", CultureInfo.CurrentCulture) + " МБ/с";
+                }
+                return new TransferUpdate { IsMeasurement = true, Metrics = "записано " + StorageAnalysis.Bytes(bytes) + " · " + speed };
+            }
             var match = Regex.Match(line, @"^PROGRESS:(\d{1,3})\s*$");
             if (!match.Success && installing) match = Regex.Match(line, @"\((\d{1,3})%\)\s*$");
             if (match.Success)
@@ -545,13 +589,13 @@ namespace IpaDesktop
     {
         readonly object gate = new object();
         readonly Stopwatch elapsed = new Stopwatch();
-        string kind, name, metrics, summary;
+        string kind, name, metrics, fileMetrics, summary;
         int index, count;
         double? percent;
         public void Reset() { lock (gate) { kind = null; summary = null; elapsed.Reset(); } }
         public void Begin(string operation, int position, int total, string app)
         {
-            lock (gate) { kind = operation; index = position; count = total; name = app; metrics = null; summary = null; percent = null; elapsed.Restart(); }
+            lock (gate) { kind = operation; index = position; count = total; name = app; metrics = null; fileMetrics = null; summary = null; percent = null; elapsed.Restart(); }
         }
         /// <summary>Разбирает реальный вывод CLI под блокировкой; неподдерживаемые метрики не выдумываются.</summary>
         public bool Feed(string line)
@@ -561,7 +605,8 @@ namespace IpaDesktop
                 if (kind == null || summary != null) return false;
                 var update = TransferUpdate.Parse(line, kind == "Установка");
                 if (update == null) return false;
-                percent = update.Percent; metrics = update.Metrics;
+                if (update.IsMeasurement) { if (kind != "Скачивание") return false; fileMetrics = update.Metrics; }
+                else { percent = update.Percent; metrics = update.Metrics; }
                 return true;
             }
         }
@@ -581,18 +626,23 @@ namespace IpaDesktop
         public bool Active { get { lock (gate) return kind != null; } }
         public double Value { get { lock (gate) return count > 0 ? 100.0 * (index - 1 + (percent ?? 0) / 100.0) / count : 0; } }
         public bool Indeterminate { get { lock (gate) return !percent.HasValue; } }
-        public string Text
+        string MetricsText()
         {
-            get
-            {
-                lock (gate)
-                {
-                    if (kind == null) return "";
-                    if (summary != null) return summary;
-                    return kind + " " + index + "/" + count + ": " + name + " · осталось после текущего: " + Math.Max(0, count - index) + " · " + (percent.HasValue ? percent.Value.ToString("0") + "%" : "выполняется") + " · " + elapsed.Elapsed.ToString(@"hh\:mm\:ss") + (metrics == null ? (kind == "Скачивание" ? " · объём и скорость недоступны" : "") : " · " + metrics);
-                }
-            }
+            return kind == "Скачивание" && summary == null ? metrics ?? fileMetrics ?? "объём и скорость недоступны" : "";
         }
+        string Describe(bool includeMetrics)
+        {
+            if (kind == null) return "";
+            if (summary != null) return summary;
+            string text = kind + " " + index + "/" + count + ": " + name + " · осталось после текущего: " + Math.Max(0, count - index) + " · " +
+                (percent.HasValue ? percent.Value.ToString("0") + "%" : "выполняется") + " · " + elapsed.Elapsed.ToString(@"hh\:mm\:ss");
+            if (kind == "Скачивание" && percent.HasValue && percent.Value >= 100) text += " · проверка и подготовка IPA";
+            string transfer = MetricsText();
+            return includeMetrics && transfer.Length > 0 ? text + " · " + transfer : text;
+        }
+        public string TransferText { get { lock (gate) return MetricsText(); } }
+        public string StatusText { get { lock (gate) return Describe(false); } }
+        public string Text { get { lock (gate) return Describe(true); } }
     }
 }
 
@@ -1600,10 +1650,12 @@ namespace IpaDesktop
     {
         readonly IAppToolClient tools;
         readonly string folder;
+        public Action<string> Transfer { get; set; }
         public ApplicationDownloads(IAppToolClient tools, string folder)
         {
             this.tools = tools;
             this.folder = folder;
+            Transfer = delegate { };
         }
         /// <summary>Запускает скачивание с получением лицензии и отдельным назначением для каждого запроса.</summary>
         public async Task DownloadAsync(DownloadItem item, CancellationToken ct)
@@ -1622,7 +1674,33 @@ namespace IpaDesktop
             {
                 "--external-version-id", item.VersionID
             });
-            ToolResponse.Ensure(await tools.RunAsync(arguments.ToArray(), ct, true));
+            using (var monitor = CancellationTokenSource.CreateLinkedTokenSource(ct))
+            {
+                var observing = ObserveAsync(destination + ".tmp", monitor.Token);
+                try { ToolResponse.Ensure(await tools.RunAsync(arguments.ToArray(), ct, true)); }
+                finally
+                {
+                    monitor.Cancel();
+                    try { await observing.ConfigureAwait(false); } catch (OperationCanceledException) { }
+                }
+            }
+        }
+        /// <summary>Раз в секунду читает только размер нашего временного IPA; не сканирует папку и не читает тело файла.</summary>
+        async Task ObserveAsync(string path, CancellationToken ct)
+        {
+            var meter = new FileTransferMeter(); var time = Stopwatch.StartNew();
+            while (true)
+            {
+                await Task.Delay(1000, ct).ConfigureAwait(false);
+                try
+                {
+                    var file = new FileInfo(path);
+                    if (file.Exists) Transfer(meter.Sample(file.Length, time.Elapsed.TotalSeconds).Message);
+                    else meter.Reset();
+                }
+                catch (IOException) { meter.Reset(); }
+                catch (UnauthorizedAccessException) { meter.Reset(); }
+            }
         }
     }
 }
@@ -1877,84 +1955,35 @@ namespace IpaDesktop
     }
 }
 
-// Services/DeviceService.cs
+// Services/DeviceCommandClient.cs
 namespace IpaDesktop
 {
-    /// <summary>Обнаруживает iPhone и устанавливает IPA по реальному UDID, а не по подписи устройства.</summary>
-    public sealed class DeviceService
+    /// <summary>Единая обвязка CLI: транспорт, ожидание ответа, идентификация устройства и запуск без скрытых повторов.</summary>
+    public sealed class DeviceCommandClient
     {
-        readonly IProcessRunner runner;
-        readonly ToolLocator locator;
-        public Action<string> Log
+        readonly IProcessRunner runner; readonly ToolLocator locator;
+        public DeviceCommandClient(IProcessRunner runner, ToolLocator locator) { this.runner = runner; this.locator = locator; }
+        public Task<Result> ListAsync(bool network, CancellationToken ct) { return Probe(locator.Find("idevice_id*.exe"), new[] { network ? "-n" : "-l" }, ct); }
+        public Task<Result> NameAsync(DeviceRow device, CancellationToken ct, int seconds = 5) { return Probe(locator.Find("ideviceinfo*.exe"), Arguments(device, "-u", device.ID, "-k", "DeviceName"), ct, seconds); }
+        public async Task InstallAsync(DeviceRow device, InstallationPackage package, CancellationToken ct)
         {
-            get;
-            set;
+            ToolResponse.Ensure(await runner.Run(locator.Find("ideviceinstaller*.exe"), Arguments(device, "--udid", device.ID, "install", package.RelativePath), ct, false, true, package.WorkingDirectory));
         }
-        public DeviceService(IProcessRunner runner, ToolLocator locator)
-        {
-            this.runner = runner;
-            this.locator = locator;
-            Log = delegate
-            {
-            };
-        }
-        /// <summary>Получает UDID подключённых устройств и добавляет понятные имена для выбора в интерфейсе.</summary>
-        public Task<List<DeviceRow>> FindAsync(CancellationToken ct) { return FindAsync(false, ct); }
-        public async Task<List<DeviceRow>> FindAsync(bool includeWifi, CancellationToken ct)
-        {
-            var devices = new List<DeviceRow>(); bool usbFailed = false;
-            try { devices = await FindTransport(false, ct); }
-            catch (OperationCanceledException) { throw; }
-            catch (Exception e) { if (!includeWifi) throw; usbFailed = true; Log("Поиск USB: " + e.Message); }
-            if (includeWifi)
-            {
-                try { devices.AddRange(await FindTransport(true, ct)); }
-                catch (OperationCanceledException) { throw; }
-                catch (Exception e) { if (usbFailed) throw new IOException("Не удалось проверить USB и Wi-Fi. Проверьте службу Apple и соединение.\n" + e.Message, e); Log("Поиск Wi-Fi: " + e.Message + ". USB-устройства сохранены. Проверьте сетевую синхронизацию в Apple Devices/iTunes."); }
-            }
-            foreach (var group in devices.GroupBy(x => x.Name + "|" + x.Connection).Where(g => g.Count() > 1))
-                foreach (var device in group) device.Name += " · " + device.ID.Substring(Math.Max(0, device.ID.Length - 6));
-            return devices;
-        }
-        async Task<List<DeviceRow>> FindTransport(bool network, CancellationToken ct)
-        {
-            var result = await Probe(locator.Find("idevice_id*.exe"), new[] { network ? "-n" : "-l" }, ct);
-            var ids = result.Output.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
-                .Select(x => x.Trim()).Where(x => System.Text.RegularExpressions.Regex.IsMatch(x, "^[0-9A-Fa-f-]{20,}$")).Distinct().ToList();
-            var devices = new List<DeviceRow>();
-            foreach (var id in ids)
-            {
-                ct.ThrowIfCancellationRequested();
-                var device = new DeviceRow { ID = id, Network = network, Name = "iPhone · " + id.Substring(Math.Max(0, id.Length - 6)) };
-                try
-                {
-                    var info = await Probe(locator.Find("ideviceinfo*.exe"), Arguments(device, "-u", id, "-k", "DeviceName"), ct);
-                    string value = info.Output.Trim();
-                    if (value.StartsWith("DeviceName:", StringComparison.Ordinal)) value = value.Substring(11).Trim();
-                    if (value.Length > 0 && value.Length <= 200 && !value.Any(Char.IsControl)) device.Name = value;
-                }
-                catch (OperationCanceledException) { throw; }
-                catch (Exception e) { Log("Имя iPhone (" + device.Connection + ") не получено: " + e.Message); }
-                devices.Add(device);
-            }
-            return devices;
-        }
-        /// <summary>Один транспорт используется во всех командах; не допускает неявного перехода с Wi-Fi на USB.</summary>
         public static string[] Arguments(DeviceRow device, params string[] args)
         {
             if (device == null || !System.Text.RegularExpressions.Regex.IsMatch(device.ID ?? "", "^[0-9A-Fa-f-]{20,}$")) throw new IOException("Некорректный идентификатор iPhone.");
             return device.Network ? new[] { "--network" }.Concat(args).ToArray() : args;
         }
-        async Task<Result> Probe(string exe, string[] args, CancellationToken ct)
+        async Task<Result> Probe(string exe, string[] args, CancellationToken ct, int seconds = 15)
         {
             using (var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct))
             {
-                timeout.CancelAfter(TimeSpan.FromSeconds(15));
+                timeout.CancelAfter(TimeSpan.FromSeconds(seconds));
                 try { var result = await runner.Run(exe, args, timeout.Token, false, false); ToolResponse.Ensure(result); return result; }
                 catch (OperationCanceledException)
                 {
                     ct.ThrowIfCancellationRequested();
-                    throw new IOException("iPhone не ответил за 15 секунд. Разблокируйте телефон; проверьте USB либо Wi-Fi и доверие компьютеру.");
+                    throw new IOException("iPhone не ответил за " + seconds + " секунд. Разблокируйте телефон; проверьте USB либо Wi-Fi и доверие компьютеру.");
                 }
             }
         }
@@ -1973,35 +2002,95 @@ namespace IpaDesktop
                 throw new IOException("Не удалось подтвердить связь с выбранным iPhone по Wi-Fi. Разблокируйте телефон и проверьте сетевую синхронизацию.");
             return values;
         }
-        /// <summary>По запросу читает модель и iOS одним вызовом ideviceinfo с ограниченным ожиданием.</summary>
-        public async Task<string> DetailsAsync(DeviceRow device, CancellationToken ct)
+    }
+}
+
+// Services/DeviceDiscovery.cs
+namespace IpaDesktop
+{
+    /// <summary>Обнаружение USB и Wi-Fi сохраняет независимые результаты и не выполняет параллельные операции с одним runner.</summary>
+    public sealed class DeviceDiscovery
+    {
+        readonly DeviceCommandClient client;
+        public Action<string> Log { get; set; }
+        public DeviceDiscovery(DeviceCommandClient client) { this.client = client; Log = delegate { }; }
+        public Task<List<DeviceRow>> FindAsync(CancellationToken ct) { return FindAsync(false, ct); }
+        public async Task<List<DeviceRow>> FindAsync(bool includeWifi, CancellationToken ct)
         {
-            var values = await ReadDeviceAsync(device, ct);
-            string model, version;
-            if (!values.TryGetValue("ProductType", out model)) model = "не удалось прочитать";
-            if (!values.TryGetValue("ProductVersion", out version)) version = "не удалось прочитать";
-            return "Имя: " + device.Name + Environment.NewLine + "Подключение: " + device.Connection + Environment.NewLine +
-                "Модель (ProductType): " + model + Environment.NewLine + "iOS: " + version + Environment.NewLine + "UDID: " + device.ID;
+            var devices = new List<DeviceRow>(); bool usbFailed = false;
+            try { devices = await FindTransport(false, ct); }
+            catch (OperationCanceledException) { throw; }
+            catch (Exception e) { if (!includeWifi) throw; usbFailed = true; Log("Поиск USB: " + e.Message); }
+            if (includeWifi)
+            {
+                try { devices.AddRange(await FindTransport(true, ct)); }
+                catch (OperationCanceledException) { throw; }
+                catch (Exception e) { if (usbFailed) throw new IOException("Не удалось проверить USB и Wi-Fi. Проверьте службу Apple и соединение.\n" + e.Message, e); Log("Поиск Wi-Fi: " + e.Message + ". USB-устройства сохранены. Проверьте сетевую синхронизацию в Apple Devices/iTunes."); }
+            }
+            // Сначала получаем все UDID, затем имена. Не позволяем множеству спящих Wi-Fi-устройств задержать поиск на минуты.
+            var names = Stopwatch.StartNew(); bool omitted = false;
+            foreach (var device in devices)
+            {
+                ct.ThrowIfCancellationRequested();
+                int remaining = (int)Math.Floor(15 - names.Elapsed.TotalSeconds);
+                if (remaining < 1) { omitted = true; continue; }
+                try
+                {
+                    var info = await client.NameAsync(device, ct, Math.Min(5, remaining));
+                    string value = info.Output.Trim();
+                    if (value.StartsWith("DeviceName:", StringComparison.Ordinal)) value = value.Substring(11).Trim();
+                    if (value.Length > 0 && value.Length <= 200 && !value.Any(Char.IsControl)) device.Name = value;
+                }
+                catch (OperationCanceledException) { throw; }
+                catch (Exception e) { Log("Имя iPhone (" + device.Connection + ") не получено: " + e.Message); }
+            }
+            if (omitted) Log("Для части устройств показан короткий идентификатор: общий лимит получения имён 15 секунд. Поиск устройств завершён.");
+            foreach (var group in devices.GroupBy(x => x.Name + "|" + x.Connection).Where(g => g.Count() > 1))
+                foreach (var device in group) device.Name += " · " + device.ID.Substring(Math.Max(0, device.ID.Length - 6));
+            return devices;
         }
-        /// <summary>Устанавливает указанный IPA на выбранный UDID с поддержкой отмены.</summary>
+        async Task<List<DeviceRow>> FindTransport(bool network, CancellationToken ct)
+        {
+            var result = await client.ListAsync(network, ct);
+            var ids = result.Output.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
+                .Select(x => x.Trim()).Where(x => System.Text.RegularExpressions.Regex.IsMatch(x, "^[0-9A-Fa-f-]{20,}$")).Distinct().ToList();
+            var devices = new List<DeviceRow>();
+            foreach (var id in ids) devices.Add(new DeviceRow { ID = id, Network = network, Name = "iPhone · " + id.Substring(Math.Max(0, id.Length - 6)) });
+            return devices;
+        }
+    }
+}
+
+// Services/DeviceInstallation.cs
+namespace IpaDesktop
+{
+    /// <summary>Проверяет устройство и исходный IPA до копирования; затем повторно проверяет фактически отправляемый пакет.</summary>
+    public sealed class DeviceInstallation
+    {
+        readonly DeviceCommandClient client;
+        public Action<string> Log { get; set; }
+        public DeviceInstallation(DeviceCommandClient client) { this.client = client; Log = delegate { }; }
         public async Task InstallAsync(DeviceRow device, LocalRow file, CancellationToken ct)
         {
             if (!File.Exists(file.Path)) throw new IOException("IPA-файл больше не существует.");
             try
             {
-                // Проверяем тот файл, который действительно отправляем, и выбранный транспорт непосредственно перед установкой.
+                var source = await Task.Run(() => IpaMetadata.ReadDetails(file.Path), ct);
+                string platformError = AppCompatibility.BlockReason(source, null);
+                if (platformError != null) throw new IOException(platformError);
+                var info = await client.ReadDeviceAsync(device, ct);
+                string ios; info.TryGetValue("ProductVersion", out ios);
+                string reason = AppCompatibility.BlockReason(source, ios);
+                if (reason != null) throw new IOException(reason);
                 using (var package = await InstallationPackage.CreateAsync(file.Path, ct))
                 {
                     var details = await Task.Run(() => IpaMetadata.ReadDetails(Path.Combine(package.WorkingDirectory, package.RelativePath)), ct);
-                    var info = await ReadDeviceAsync(device, ct);
-                    string ios; info.TryGetValue("ProductVersion", out ios);
-                    string reason = AppCompatibility.BlockReason(details, ios);
+                    reason = AppCompatibility.BlockReason(details, ios);
                     if (reason != null) throw new IOException(reason);
                     if (String.IsNullOrEmpty(details.MinimumOS) || details.Platforms == null || details.Platforms.Length == 0 || String.IsNullOrEmpty(ios))
                         Log("Совместимость " + file.DisplayName + ": часть метаданных недоступна; окончательную проверку выполнит iPhone.");
                     ct.ThrowIfCancellationRequested();
-                    ToolResponse.Ensure(await runner.Run(locator.Find("ideviceinstaller*.exe"),
-                        Arguments(device, "--udid", device.ID, "install", package.RelativePath), ct, false, true, package.WorkingDirectory));
+                    await client.InstallAsync(device, package, ct);
                 }
             }
             catch (OperationCanceledException) { throw; }
@@ -2010,6 +2099,40 @@ namespace IpaDesktop
                 if (!device.Network) throw;
                 throw new IOException("Установка по Wi-Fi не завершена. Проверьте связь и состояние приложения на iPhone. Разблокируйте телефон, проверьте общую сеть и сетевую синхронизацию; при необходимости выберите USB и повторите только ошибки.\n" + e.Message, e);
             }
+        }
+    }
+}
+
+// Services/DeviceService.cs
+namespace IpaDesktop
+{
+    /// <summary>Фасад инструментов iPhone. Обнаружение, команды и установка разделены и доступны для независимых проверок.</summary>
+    public sealed class DeviceService
+    {
+        readonly DeviceCommandClient client; readonly DeviceDiscovery discovery; readonly DeviceInstallation installation;
+        Action<string> log;
+        public Action<string> Log
+        {
+            get { return log; }
+            set { log = value ?? delegate { }; discovery.Log = log; installation.Log = log; }
+        }
+        public DeviceService(IProcessRunner runner, ToolLocator locator)
+        {
+            client = new DeviceCommandClient(runner, locator); discovery = new DeviceDiscovery(client); installation = new DeviceInstallation(client); Log = delegate { };
+        }
+        public Task<List<DeviceRow>> FindAsync(CancellationToken ct) { return discovery.FindAsync(ct); }
+        public Task<List<DeviceRow>> FindAsync(bool includeWifi, CancellationToken ct) { return discovery.FindAsync(includeWifi, ct); }
+        public Task<Dictionary<string, string>> ReadDeviceAsync(DeviceRow device, CancellationToken ct) { return client.ReadDeviceAsync(device, ct); }
+        public Task InstallAsync(DeviceRow device, LocalRow file, CancellationToken ct) { return installation.InstallAsync(device, file, ct); }
+        public static string[] Arguments(DeviceRow device, params string[] args) { return DeviceCommandClient.Arguments(device, args); }
+        public async Task<string> DetailsAsync(DeviceRow device, CancellationToken ct)
+        {
+            var values = await client.ReadDeviceAsync(device, ct);
+            string model, version;
+            if (!values.TryGetValue("ProductType", out model)) model = "не удалось прочитать";
+            if (!values.TryGetValue("ProductVersion", out version)) version = "не удалось прочитать";
+            return "Имя: " + device.Name + Environment.NewLine + "Подключение: " + device.Connection + Environment.NewLine +
+                "Модель (ProductType): " + model + Environment.NewLine + "iOS: " + version + Environment.NewLine + "UDID: " + device.ID;
         }
     }
 }
@@ -2123,6 +2246,7 @@ namespace IpaDesktop
                 catalog.Log = value;
                 updater.Log = value;
                 Devices.Log = value;
+                ApplicationDownloads.Transfer = value;
             }
         }
         public Action<double> Progress

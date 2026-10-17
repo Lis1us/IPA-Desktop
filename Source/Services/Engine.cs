@@ -83,6 +83,7 @@ namespace IpaDesktop
                 catalog.Log = value;
                 updater.Log = value;
                 Devices.Log = value;
+                ApplicationDownloads.Transfer = value;
             }
         }
         public Action<double> Progress

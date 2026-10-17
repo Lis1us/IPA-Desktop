@@ -19,10 +19,12 @@ namespace IpaDesktop
     {
         readonly IAppToolClient tools;
         readonly string folder;
+        public Action<string> Transfer { get; set; }
         public ApplicationDownloads(IAppToolClient tools, string folder)
         {
             this.tools = tools;
             this.folder = folder;
+            Transfer = delegate { };
         }
         /// <summary>Запускает скачивание с получением лицензии и отдельным назначением для каждого запроса.</summary>
         public async Task DownloadAsync(DownloadItem item, CancellationToken ct)
@@ -41,7 +43,33 @@ namespace IpaDesktop
             {
                 "--external-version-id", item.VersionID
             });
-            ToolResponse.Ensure(await tools.RunAsync(arguments.ToArray(), ct, true));
+            using (var monitor = CancellationTokenSource.CreateLinkedTokenSource(ct))
+            {
+                var observing = ObserveAsync(destination + ".tmp", monitor.Token);
+                try { ToolResponse.Ensure(await tools.RunAsync(arguments.ToArray(), ct, true)); }
+                finally
+                {
+                    monitor.Cancel();
+                    try { await observing.ConfigureAwait(false); } catch (OperationCanceledException) { }
+                }
+            }
+        }
+        /// <summary>Раз в секунду читает только размер нашего временного IPA; не сканирует папку и не читает тело файла.</summary>
+        async Task ObserveAsync(string path, CancellationToken ct)
+        {
+            var meter = new FileTransferMeter(); var time = Stopwatch.StartNew();
+            while (true)
+            {
+                await Task.Delay(1000, ct).ConfigureAwait(false);
+                try
+                {
+                    var file = new FileInfo(path);
+                    if (file.Exists) Transfer(meter.Sample(file.Length, time.Elapsed.TotalSeconds).Message);
+                    else meter.Reset();
+                }
+                catch (IOException) { meter.Reset(); }
+                catch (UnauthorizedAccessException) { meter.Reset(); }
+            }
         }
     }
 }
