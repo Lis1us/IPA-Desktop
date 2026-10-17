@@ -406,15 +406,13 @@
               <Button x:Name="DeviceInfo" Content="Об iPhone…"/>
               <ComboBox x:Name="DeviceList" DisplayMemberPath="DisplayLabel" Margin="0,0,8,8"/>
             </WrapPanel>
-            <WrapPanel Margin="0,0,0,4">
-              <CheckBox x:Name="SearchWifi" Content="Искать также по Wi-Fi (экспериментально)" Foreground="#EDF1F8" VerticalAlignment="Center" Margin="0,0,12,4"/>
-              <Button x:Name="WifiHelp" Content="Как подключить по Wi-Fi?" FontSize="12" Padding="8,4"/>
-              <TextBlock x:Name="WifiStatus" Text="USB по умолчанию" Foreground="#AFC6E7" VerticalAlignment="Center" FontSize="12" Margin="8,0,0,4"/>
-            </WrapPanel>
-            <DockPanel Margin="0,0,0,8">
-              <Button x:Name="OpenAppleSupportHelp" Content="Помощь Apple" DockPanel.Dock="Right" FontSize="12" Padding="8,4" Margin="8,0,0,0"/>
-              <Button x:Name="CheckAppleSupport" Content="Проверить драйвер" DockPanel.Dock="Right" FontSize="12" Padding="8,4" Margin="8,0,0,0"/>
-              <TextBlock x:Name="AppleSupportStatus" Text="Компоненты Apple: проверка при запуске" Foreground="#9BACBF" VerticalAlignment="Center" FontSize="12" TextWrapping="Wrap"/>
+            <DockPanel Margin="0,0,0,8" LastChildFill="True">
+              <Button x:Name="OpenAppleSupportHelp" Content="Помощь Apple" DockPanel.Dock="Right" FontSize="12" Padding="8,4" Margin="6,0,0,0"/>
+              <Button x:Name="CheckAppleSupport" Content="Проверить драйвер" DockPanel.Dock="Right" FontSize="12" Padding="8,4" Margin="6,0,0,0"/>
+              <Button x:Name="WifiHelp" Content="Wi-Fi: помощь" DockPanel.Dock="Right" FontSize="12" Padding="8,4" Margin="6,0,0,0"/>
+              <CheckBox x:Name="SearchWifi" Content="USB + Wi-Fi (экспериментально)" ToolTip="Искать также по Wi-Fi, сохраняя поиск USB" Foreground="#EDF1F8" VerticalAlignment="Center" FontSize="12" Margin="0,0,10,0"/>
+              <TextBlock x:Name="WifiStatus" Text="USB" Foreground="#AFC6E7" VerticalAlignment="Center" FontSize="12" Margin="0,0,10,0"/>
+              <TextBlock x:Name="AppleSupportStatus" Text="Компоненты Apple: проверка при запуске" Foreground="#9BACBF" VerticalAlignment="Center" FontSize="12" TextTrimming="CharacterEllipsis"/>
             </DockPanel>
           </StackPanel>
           <DataGrid x:Name="Files" Grid.Row="1" SelectionMode="Extended">
