@@ -115,7 +115,7 @@ try {
  $device=New-Object IpaDesktop.DeviceRow;$device.Name='Test iPhone';$device.ID='00008030-0000111ABC000DEF'
  $window.FindName('DeviceList').ItemsSource=[IpaDesktop.DeviceRow[]]@($device)
  $window.FindName('DeviceList').SelectedIndex=0
- if($window.FindName('DeviceList').SelectedItem.ID -ne $device.ID -or $window.FindName('DeviceList').DisplayMemberPath -ne 'Name'){throw 'Named device selection lost its UDID'}
+ if($window.FindName('DeviceList').SelectedItem.ID -ne $device.ID -or $window.FindName('DeviceList').DisplayMemberPath -ne 'DisplayLabel'){throw 'Named device selection lost its UDID'}
  Write-Host 'PASS: single-click exclusion and routed double-click selection on both grids'
  $tabs.SelectedIndex=0
  $window.Width=940;$window.Height=720;$window.Dispatcher.Invoke([Action]{},[Windows.Threading.DispatcherPriority]::ApplicationIdle);$window.UpdateLayout()
