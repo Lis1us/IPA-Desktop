@@ -70,6 +70,18 @@ public sealed class RecordingProcessRunner : IProcessRunner
     }
 }
 '@
+# Реальные схемы get-version-metadata: 1.1.8 без новых полей, 1.1.9 с minimumOSVersion, 1.2.0 с supportedPlatforms.
+$old=[IpaDesktop.ToolResponse]::VersionMetadataText([IpaDesktop.ToolResponse]::Object('{"displayVersion":"2.3","releaseDate":"2026-10-15","success":true}'))
+if(!$old.Contains('Версия: 2.3') -or !$old.Contains('Минимальная версия ОС: не указана') -or !$old.Contains('Платформы: не указаны')){throw 'Legacy metadata lost version/date or fabricated compatibility'}
+$v119=[IpaDesktop.ToolResponse]::VersionMetadataText([IpaDesktop.ToolResponse]::Object('{"displayVersion":"2.3","releaseDate":"2026-10-15","minimumOSVersion":"16.0","success":true}'))
+if(!$v119.Contains('Минимальная версия ОС: 16.0') -or !$v119.Contains('Платформы: не указаны')){throw 'ipatool 1.1.9 minimum OS metadata failed'}
+$v120=[IpaDesktop.ToolResponse]::VersionMetadataText([IpaDesktop.ToolResponse]::Object('{"displayVersion":"2.3","minimumOSVersion":"17.0","supportedPlatforms":["iPhoneOS","iPhoneOS","AppleTVOS"],"futureField":true}'))
+if(!$v120.Contains('Платформы: iOS (iPhoneOS), AppleTVOS') -or !$v120.Contains('Минимальная версия ОС: 17.0')){throw 'ipatool 1.2.0 platform metadata failed'}
+$mac=[IpaDesktop.ToolResponse]::VersionMetadataText([IpaDesktop.ToolResponse]::Object('{"supportedPlatforms":["macOS"],"minimumOSVersion":"15.7"}'))
+if(!$mac.Contains('Платформы: macOS') -or $mac.Contains('iPhoneOS')){throw 'macOS app presented as iOS compatible'}
+$missing=[IpaDesktop.ToolResponse]::VersionMetadataText([IpaDesktop.ToolResponse]::Object('{"minimumOSVersion":null,"supportedPlatforms":[null,12,{},""]}'))
+if(!$missing.Contains('Минимальная версия ОС: не указана') -or !$missing.Contains('Платформы: не указаны')){throw 'Unavailable optional metadata fabricated values'}
+Write-Host 'PASS: ipatool 1.1.8/1.1.9/1.2.0 metadata, minimum OS, multiple platforms, missing fields and macOS distinction'
 $temp=Join-Path ([IO.Path]::GetTempPath()) ('ipa-oop-'+[Guid]::NewGuid().ToString('N'))
 $window=$null
 $originalContext=[Threading.SynchronizationContext]::Current

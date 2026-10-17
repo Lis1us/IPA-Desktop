@@ -27,7 +27,7 @@ namespace IpaDesktop
     /// <summary>Единые сведения о версии и репозитории GUI; версия в XAML сверяется при выпуске.</summary>
     public static class AppInfo
     {
-        public const string Version = "0.2.1";
+        public const string Version = "0.2.2";
         public const string Repository = "iamdarkls/IPA-Desktop";
         public const string ReleasesUrl = "https://github.com/" + Repository + "/releases";
     }
@@ -2670,6 +2670,27 @@ namespace IpaDesktop
             {
                 throw new Exception("Формат ответа движка изменился. См. журнал или выполните откат.");
             }
+        }
+        /// <summary>Необязательные поля ipatool 1.1.9/1.2.0: отсутствие данных не означает совместимость с любой ОС.</summary>
+        public static string VersionMetadataText(Dictionary<string, object> data)
+        {
+            Func<string, string> value = key =>
+            {
+                var text = Get(data, key) as string;
+                return String.IsNullOrWhiteSpace(text) ? "не указана" : text.Trim();
+            };
+            var raw = Get(data, "supportedPlatforms") as object[];
+            var platforms = (raw ?? new object[0]).OfType<string>().Where(x => !String.IsNullOrWhiteSpace(x))
+                .Select(x => x.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).Select(x =>
+                {
+                    if (String.Equals(x, "iPhoneOS", StringComparison.OrdinalIgnoreCase)) return "iOS (iPhoneOS)";
+                    if (String.Equals(x, "MacOSX", StringComparison.OrdinalIgnoreCase) || String.Equals(x, "macOS", StringComparison.OrdinalIgnoreCase)) return "macOS";
+                    return x;
+                }).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+            return "Версия: " + value("displayVersion") + Environment.NewLine +
+                "Дата выпуска: " + value("releaseDate") + Environment.NewLine +
+                "Минимальная версия ОС: " + value("minimumOSVersion") + Environment.NewLine +
+                "Платформы: " + (platforms.Length == 0 ? "не указаны" : String.Join(", ", platforms));
         }
         public static object Get(Dictionary<string, object> d, string key)
         {

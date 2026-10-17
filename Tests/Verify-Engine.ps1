@@ -110,6 +110,22 @@ try {
   $cancel=New-Object Threading.CancellationTokenSource;$cancel.Cancel();$failed=$false
   try{try{$liveEngine.InstallDeviceTools($deviceRelease,$cancel.Token).GetAwaiter().GetResult()}catch{$failed=$true}}finally{$cancel.Dispose()}
   if(!$failed -or $liveEngine.Settings.DeviceCurrent -ne $devices){throw 'Canceled device update changed active support'}
+  # Проверяем оба обновления на настоящих Windows-архивах, без входа в Apple Account.
+  foreach($tag in @('1.1.9','1.2.0')){
+   $info=Invoke-RestMethod -Uri ('https://api.github.com/repos/Sorvigolova/ipatool/releases/tags/'+$tag) -Headers @{'User-Agent'='IPA-Desktop-Compatibility'}
+   $pinned=New-Object IpaDesktop.Release;$pinned.tag_name=$info.tag_name
+   $pinned.assets=@($info.assets|ForEach-Object{
+    $item=New-Object IpaDesktop.Asset
+    $item.name=$_.name;$item.size=$_.size;$item.digest=$_.digest;$item.browser_download_url=$_.browser_download_url
+    $item
+   })
+   $priorEngine=$liveEngine.Settings.Current;$priorTools=$liveEngine.Settings.DeviceCurrent
+   $liveEngine.Install($pinned,$ct).GetAwaiter().GetResult()
+   if($liveEngine.Settings.Version -ne $tag -or $liveEngine.Settings.Source -ne 'Sorvigolova/ipatool' -or $liveEngine.Settings.DeviceCurrent -ne $priorTools){throw "ipatool $tag install affected tools or selected wrong release"}
+   $liveEngine.Rollback()
+   if($liveEngine.Settings.Current -ne $priorEngine -or $liveEngine.Settings.DeviceCurrent -ne $priorTools){throw "ipatool $tag rollback lost independent state"}
+   Write-Host ('PASS: actual Windows ipatool '+$tag+' archive, SHA-256, CLI command contract, install and rollback')
+  }
   Write-Host 'PASS: actual device CLI versions; independent device update/rollback; current release; save-failure recovery; cancellation'
   Write-Host ('PASS: actual upstream Windows ZIP '+$latest.tag_name+'; CLI startup/commands; fresh device import; migration; rollback')
  }

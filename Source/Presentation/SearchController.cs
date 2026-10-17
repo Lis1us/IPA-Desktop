@@ -146,9 +146,8 @@ namespace IpaDesktop
                     }, ct, false);
                     Engine.Ensure(r);
                     var data = Engine.Object(r.Output);
-                    var number = Convert.ToString(Engine.Get(data, "displayVersion"));
-                    var date = Convert.ToString(Engine.Get(data, "releaseDate"));
-                    AppDialogs.ShowText(w, "Сведения о версии", row.Name + Environment.NewLine + Environment.NewLine + "Версия: " + (String.IsNullOrWhiteSpace(number) ? "не указана" : number) + Environment.NewLine + "Дата выпуска: " + (String.IsNullOrWhiteSpace(date) ? "не указана" : date) + Environment.NewLine + "ID версии: " + version + Environment.NewLine + "App Store ID: " + row.ID);
+                    AppDialogs.ShowText(w, "Сведения о версии", row.Name + Environment.NewLine + Environment.NewLine +
+                        ToolResponse.VersionMetadataText(data) + Environment.NewLine + "ID версии: " + version + Environment.NewLine + "App Store ID: " + row.ID);
                 });
             });
             RowClickSelection.Attach(C<DataGrid>("Apps"), delegate(object item)
