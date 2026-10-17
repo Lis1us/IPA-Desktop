@@ -285,6 +285,8 @@ namespace IpaDesktop
             };
             w.SourceInitialized += delegate
             {
+                // На небольшом экране сохраняем прежний минимум; увеличенную высоту ограничиваем рабочей областью.
+                w.Height = Math.Min(w.Height, Math.Max(w.MinHeight, SystemParameters.WorkArea.Height));
                 WindowTheme.Apply(w);
             };
             w.Activated += delegate
@@ -445,3 +447,4 @@ namespace IpaDesktop
         }
     }
 }
+

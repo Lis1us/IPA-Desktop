@@ -183,6 +183,46 @@ try {
  $editor=[IpaDesktop.AppSetEditor]::Create($window,'Базовый набор',[IpaDesktop.AppRow[]]@($presetApp),[Action[string,Collections.Generic.IEnumerable[IpaDesktop.AppRow]]]{param($name,$apps)})
  $editor.Show()
  try {EmitDialogPreview $editor 'IPA_EDITOR_PREVIEW'}finally{$editor.Close()}
+ # Verify actual ScrollViewer scrollbars, page commands and drag routing in both orientations.
+ function FindScrollbars($node){
+  if($node -is [Windows.Controls.Primitives.ScrollBar]){Write-Output $node}
+  for($n=0;$n -lt [Windows.Media.VisualTreeHelper]::GetChildrenCount($node);$n++){FindScrollbars ([Windows.Media.VisualTreeHelper]::GetChild($node,$n))}
+ }
+ $scrollDialog=[IpaDesktop.AppDialogs]::Create($window,'Прокрутка',600,450)
+ $viewer=New-Object Windows.Controls.ScrollViewer;$viewer.VerticalScrollBarVisibility='Auto';$viewer.HorizontalScrollBarVisibility='Auto'
+ $surface=New-Object Windows.Controls.Border;$surface.Width=1500;$surface.Height=1500;$surface.Background=[Windows.Media.BrushConverter]::new().ConvertFromString('#151E2C')
+ $label=New-Object Windows.Controls.TextBlock;$label.Text='Тёмная прокрутка · колесо, страницы и перетаскивание';$label.Margin='24';$surface.Child=$label;$viewer.Content=$surface;$scrollDialog.Content=$viewer
+ $scrollDialog.Show()
+ try{
+  $scrollDialog.UpdateLayout()
+  $bars=@(FindScrollbars $viewer|Where-Object IsVisible)
+  if($bars.Count -ne 2){throw 'Both scrollbar orientations were not realized'}
+  foreach($bar in $bars){
+   $track=$bar.Template.FindName('PART_Track',$bar);$background=$bar.Template.FindName('ScrollSurface',$bar)
+   if(!$track -or !$background -or $background.Background.Color.ToString() -ne '#FF101A29'){throw 'Native light scrollbar remained visible'}
+   $bar.IsEnabled=$false;$scrollDialog.UpdateLayout()
+   if($background.Opacity -ne 0.4){throw 'Disabled scrollbar state lost theme'}
+   $bar.IsEnabled=$true
+   if($bar.Orientation -eq 'Vertical'){
+    if($bar.ActualWidth -ne 14 -or !$track.IsDirectionReversed){throw 'Vertical scrollbar geometry changed'}
+    [Windows.Controls.Primitives.ScrollBar]::PageDownCommand.Execute($null,$bar)
+   }else{
+    if($bar.ActualHeight -ne 14 -or $track.IsDirectionReversed){throw 'Horizontal scrollbar geometry changed'}
+    [Windows.Controls.Primitives.ScrollBar]::PageRightCommand.Execute($null,$bar)
+   }
+  }
+  $scrollDialog.Dispatcher.Invoke([Action]{},[Windows.Threading.DispatcherPriority]::ApplicationIdle);$scrollDialog.UpdateLayout()
+  if($viewer.VerticalOffset -le 0 -or $viewer.HorizontalOffset -le 0){throw 'Page commands do not scroll actual content'}
+  $vertical=@($bars|Where-Object Orientation -eq 'Vertical')[0];$track=$vertical.Template.FindName('PART_Track',$vertical)
+  $before=$viewer.VerticalOffset
+  $track.Thumb.RaiseEvent((New-Object Windows.Controls.Primitives.DragStartedEventArgs(0,0)))
+  $track.Thumb.RaiseEvent((New-Object Windows.Controls.Primitives.DragDeltaEventArgs(0,20)))
+  $track.Thumb.RaiseEvent((New-Object Windows.Controls.Primitives.DragCompletedEventArgs(0,20,$false)))
+  $scrollDialog.Dispatcher.Invoke([Action]{},[Windows.Threading.DispatcherPriority]::ApplicationIdle);$scrollDialog.UpdateLayout()
+  if($viewer.VerticalOffset -le $before){throw 'Scrollbar thumb drag did not scroll content'}
+  EmitDialogPreview $scrollDialog 'IPA_SCROLLBAR_PREVIEW'
+ }finally{$scrollDialog.Close()}
+ Write-Host 'PASS: dark vertical/horizontal scrollbars, disabled state, actual page commands and thumb drag'
  # Settings stay visible in their tab without opening an owned window.
  $window.FindName('SettingsTab').IsSelected=$true;$window.UpdateLayout()
  if(!$window.FindName('SettingsContent').IsVisible -or $window.FindName('SettingsContent').ActualHeight -lt 100){throw 'Inline settings are not visible'}
