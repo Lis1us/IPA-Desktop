@@ -197,6 +197,7 @@ try {
   $scrollDialog.UpdateLayout()
   $bars=@(FindScrollbars $viewer|Where-Object IsVisible)
   if($bars.Count -ne 2){throw 'Both scrollbar orientations were not realized'}
+  if($viewer.FindResource([Windows.SystemColors]::ControlBrushKey).Color.ToString() -ne '#FF101A29'){throw 'ScrollViewer corner lost dark background'}
   foreach($bar in $bars){
    $track=$bar.Template.FindName('PART_Track',$bar);$background=$bar.Template.FindName('ScrollSurface',$bar)
    if(!$track -or !$background -or $background.Background.Color.ToString() -ne '#FF101A29'){throw 'Native light scrollbar remained visible'}
