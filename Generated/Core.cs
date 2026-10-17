@@ -1677,12 +1677,13 @@ namespace IpaDesktop
             using (var monitor = CancellationTokenSource.CreateLinkedTokenSource(ct))
             {
                 var observing = ObserveAsync(destination + ".tmp", monitor.Token);
+                // C# 5 не поддерживает await в finally: сохраняем исходную ошибку и дожидаемся наблюдателя перед её повторным выбросом.
+                System.Runtime.ExceptionServices.ExceptionDispatchInfo failure = null;
                 try { ToolResponse.Ensure(await tools.RunAsync(arguments.ToArray(), ct, true)); }
-                finally
-                {
-                    monitor.Cancel();
-                    try { await observing.ConfigureAwait(false); } catch (OperationCanceledException) { }
-                }
+                catch (Exception error) { failure = System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(error); }
+                monitor.Cancel();
+                try { await observing.ConfigureAwait(false); } catch (OperationCanceledException) { }
+                if (failure != null) failure.Throw();
             }
         }
         /// <summary>Раз в секунду читает только размер нашего временного IPA; не сканирует папку и не читает тело файла.</summary>
