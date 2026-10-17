@@ -98,17 +98,26 @@ namespace IpaDesktop
                     var combo = C<ComboBox>("DeviceList");
                     combo.ItemsSource = null;
                     ApplyActions();
-                    var devices = await engine.Devices.FindAsync(ct);
+                    var devices = await engine.Devices.FindAsync(C<CheckBox>("SearchWifi").IsChecked == true, ct);
                     combo.ItemsSource = devices;
+                    C<TextBlock>("WifiStatus").Text = "USB: " + devices.Count(x => !x.Network) + " · Wi-Fi: " + devices.Count(x => x.Network);
                     if (devices.Count > 0)
                     {
                         foreach (var device in devices) { view.RegisterPrivate(device.ID); view.RegisterPrivate(device.Name); }
                         combo.SelectedIndex = 0;
-                        Log("Найдено: " + String.Join(", ", devices.Select(x => x.Name)));
+                        Log("Найдено: " + String.Join(", ", devices.Select(x => x.DisplayLabel)));
                     } else Log("iPhone не обнаружен. Проверьте USB, доверие и драйвер Apple.");
                     ApplyActions();
                 });
             });
+            C<CheckBox>("SearchWifi").Click += delegate
+            {
+                C<ComboBox>("DeviceList").ItemsSource = null;
+                C<TextBlock>("WifiStatus").Text = "Нажмите «Найти iPhone»";
+                ApplyActions();
+            };
+            On("WifiHelp", delegate { AppDialogs.ShowText(w, "Подключение iPhone по Wi-Fi",
+                "1. Подключите iPhone по USB и подтвердите доверие компьютеру.\n2. В Apple Devices включите «Показывать это устройство при подключении к Wi-Fi» и примените настройки. В iTunes — «Синхронизировать с этим iPhone по Wi-Fi».\n3. Подключите компьютер и iPhone к одной локальной сети, затем отключите USB.\n4. Включите «Искать также по Wi-Fi» и нажмите «Найти iPhone». Выберите строку с отметкой Wi-Fi.\n\nЕсли телефон не найден: разблокируйте его, проверьте службу Apple Mobile Device, Bonjour, разрешения Apple в брандмауэре и отсутствие изоляции устройств в гостевой сети. VPN может мешать обнаружению.\n\nРежим экспериментальный. При обрыве не переключаемся автоматически на USB и не повторяем установку без вашего действия. Проверьте результат на телефоне, прежде чем нажимать «Повторить ошибки». "); });
             On("InstallFiles", delegate { StartInstall(installChosen.Snapshot()); });
             On("RetryInstalls", delegate { StartInstall(failedInstalls.Snapshot()); });
             On("ForgetInstallErrors", delegate { failedInstalls.Clear(); ApplyActions(); });
@@ -144,7 +153,7 @@ namespace IpaDesktop
             if (device == null || rows.Count == 0) throw new Exception("Выберите устройство и IPA для установки.");
             var summary = String.Join(Environment.NewLine, rows.Take(8).Select(x => x.DisplayName));
             if (rows.Count > 8) summary += Environment.NewLine + "… и ещё " + (rows.Count - 8);
-            if (MessageBox.Show(w, "Установить IPA (" + rows.Count + ") на " + device.Name + "?" + Environment.NewLine + Environment.NewLine + summary, "Установка", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) != MessageBoxResult.Yes) return;
+            if (MessageBox.Show(w, "Установить IPA (" + rows.Count + ") на " + device.DisplayLabel + "?" + Environment.NewLine + Environment.NewLine + summary, "Установка", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) != MessageBoxResult.Yes) return;
             Work("Установка IPA…", async delegate(CancellationToken ct)
             {
                 view.StartReport("Установка", rows.Count, delegate { StartInstall(failedInstalls.Snapshot()); });
@@ -176,6 +185,8 @@ namespace IpaDesktop
         /// <summary>Пересчитывает доступность действий по состоянию выбора и выполняемой операции.</summary>
         public override void RefreshActions()
         {
+            C<CheckBox>("SearchWifi").IsEnabled = !busy;
+            C<Button>("WifiHelp").IsEnabled = !busy;
             C<Button>("FileInfo").IsEnabled = !busy && C<DataGrid>("Files").SelectedItems.Count == 1;
             C<Button>("DeviceInfo").IsEnabled = !busy && C<ComboBox>("DeviceList").SelectedItem != null;
             C<Button>("RetryInstalls").IsEnabled = !busy && failedInstalls.Count > 0 && C<ComboBox>("DeviceList").SelectedItem != null;

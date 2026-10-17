@@ -18,6 +18,7 @@ namespace IpaDesktop
             get;
             set;
         }
+        public string Key { get { return ID + "@" + (VersionID ?? "latest"); } }
         public string Label
         {
             get

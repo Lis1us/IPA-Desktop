@@ -35,6 +35,7 @@ namespace IpaDesktop
             get;
             private set;
         }
+        public AppVersions AppVersions { get; private set; }
         public State Settings
         {
             get
@@ -109,6 +110,7 @@ namespace IpaDesktop
             runner = processRunner ?? new ProcessRunner(Downloads);
             locator = new ToolLocator(settings);
             tools = new AppToolClient(runner, locator);
+            AppVersions = new AppVersions(tools);
             catalog = new AppCatalog(settings, locator);
             updater = new EngineUpdater(settings, runner);
             AppleSupport = new AppleSupportService(appleSupportProbe);
@@ -214,3 +216,4 @@ namespace IpaDesktop
         }
     }
 }
+

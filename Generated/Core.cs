@@ -27,7 +27,7 @@ namespace IpaDesktop
     /// <summary>Единые сведения о версии и репозитории GUI; версия в XAML сверяется при выпуске.</summary>
     public static class AppInfo
     {
-        public const string Version = "0.2.2";
+        public const string Version = "0.2.3";
         public const string Repository = "iamdarkls/IPA-Desktop";
         public const string ReleasesUrl = "https://github.com/" + Repository + "/releases";
     }
@@ -155,6 +155,21 @@ namespace IpaDesktop
     }
 }
 
+// Domain/AppVersionRow.cs
+namespace IpaDesktop
+{
+    /// <summary>Строка таблицы версий; неизвестные поля не подменяются данными другой версии.</summary>
+    public sealed class AppVersionRow
+    {
+        public string ID { get; set; }
+        public string Version { get; set; }
+        public string MinimumOS { get; set; }
+        public string Platforms { get; set; }
+        public string State { get; set; }
+        public AppVersionRow() { Version = "—"; MinimumOS = "—"; Platforms = "—"; State = "Не запрошено"; }
+    }
+}
+
 // Domain/Asset.cs
 namespace IpaDesktop
 {
@@ -200,6 +215,9 @@ namespace IpaDesktop
             get;
             set;
         }
+        public bool Network { get; set; }
+        public string Connection { get { return Network ? "Wi-Fi" : "USB"; } }
+        public string DisplayLabel { get { return Name + " · " + Connection; } }
         public override string ToString()
         {
             return Name;
@@ -228,6 +246,7 @@ namespace IpaDesktop
             get;
             set;
         }
+        public string Key { get { return ID + "@" + (VersionID ?? "latest"); } }
         public string Label
         {
             get
@@ -241,7 +260,7 @@ namespace IpaDesktop
 // Domain/DownloadSelection.cs
 namespace IpaDesktop
 {
-    /// <summary>Очередь загрузок, уникальная по App Store ID; снимки отделены от внутреннего состояния.</summary>
+    /// <summary>Очередь загрузок, уникальная по паре App Store ID и ID версии; снимки отделены от внутреннего состояния.</summary>
     public class DownloadSelection
     {
         readonly List<DownloadItem> items = new List<DownloadItem>();
@@ -256,17 +275,20 @@ namespace IpaDesktop
         {
             if (app == null || String.IsNullOrEmpty(app.ID) || !app.ID.All(Char.IsDigit)) throw new ArgumentException("Некорректный App Store ID.");
             if (version != null && (version.Length == 0 || !version.All(Char.IsDigit))) throw new ArgumentException("Некорректная версия.");
-            var existing = items.FirstOrDefault(x => x.ID == app.ID);
-            if (existing == null) items.Add(new DownloadItem
-            {
-                Name = app.Name, ID = app.ID, VersionID = version
-            });
-            else
-            {
-                existing.Name = app.Name;
-                existing.VersionID = version;
-            }
+            int index = items.FindIndex(x => x.ID == app.ID);
+            items.RemoveAll(x => x.ID == app.ID);
+            var replacement = new DownloadItem { Name = app.Name, ID = app.ID, VersionID = version };
+            if (index < 0) items.Add(replacement); else items.Insert(Math.Min(index, items.Count), replacement);
         }
+        /// <summary>Добавляет ещё одну версию того же приложения, не заменяя соседние элементы.</summary>
+        public void AddVariant(AppRow app, string version)
+        {
+            if (app == null || !AppSetStore.ValidId(app.ID) || (version != null && !AppSetStore.ValidId(version))) throw new ArgumentException("Некорректный ID приложения или версии.");
+            var item = items.FirstOrDefault(x => x.ID == app.ID && x.VersionID == version);
+            if (item == null) items.Add(new DownloadItem { ID = app.ID, Name = app.Name, VersionID = version });
+            else item.Name = app.Name;
+        }
+        public void RemoveKey(string key) { items.RemoveAll(x => x.Key == key); }
         /// <summary>Дополняет очередь набором, сохраняя уже выбранную пользователем версию приложения.</summary>
         public int AddMissing(IEnumerable<AppRow> apps)
         {
@@ -309,7 +331,7 @@ namespace IpaDesktop
         {
             return new LocalRow
             {
-                AppStoreID = row.AppStoreID, Name = row.Name, Path = row.Path, Size = row.Size, AppleAccount = row.AppleAccount, Bytes = row.Bytes, BundleID = row.BundleID, AppName = row.AppName, Version = row.Version, Build = row.Build, IsOld = row.IsOld, StorageStatus = row.StorageStatus
+                AppStoreID = row.AppStoreID, Name = row.Name, Path = row.Path, Size = row.Size, AppleAccount = row.AppleAccount, Bytes = row.Bytes, BundleID = row.BundleID, AppName = row.AppName, Version = row.Version, Build = row.Build, MinimumOS = row.MinimumOS, Platforms = row.Platforms == null ? null : (string[])row.Platforms.Clone(), IsOld = row.IsOld, StorageStatus = row.StorageStatus
             };
         }
         public int Count
@@ -362,6 +384,8 @@ namespace IpaDesktop
         public string BundleID { get; set; }
         public string AppName { get; set; }
         public string Version { get; set; }
+        public string MinimumOS { get; set; }
+        public string[] Platforms { get; set; }
         public string Build { get; set; }
     }
 }
@@ -390,9 +414,13 @@ namespace IpaDesktop
             {
                 return DisplayName + Environment.NewLine + "Версия: " + (String.IsNullOrWhiteSpace(Version) ? "не указана" : Version) +
                     Environment.NewLine + "Apple Account: " + (String.IsNullOrWhiteSpace(AppleAccount) ? "не указан" : AppleAccount) +
+                    Environment.NewLine + "Минимальная ОС: " + (MinimumOS ?? "не указана") +
+                    Environment.NewLine + "Платформы: " + (Platforms == null || Platforms.Length == 0 ? "не указаны" : String.Join(", ", Platforms)) +
                     Environment.NewLine + "Файл: " + Name + Environment.NewLine + Path;
             }
         }
+        public string MinimumOS { get; set; }
+        public string[] Platforms { get; set; }
         public long Bytes { get; set; }
         public string AppStoreID { get; set; }
         public string BundleID { get; set; }
@@ -1471,6 +1499,30 @@ namespace IpaDesktop
     }
 }
 
+// Services/AppCompatibility.cs
+namespace IpaDesktop
+{
+    /// <summary>Блокирует только подтверждённую несовместимость; неизвестные сведения не подменяет догадками.</summary>
+    public static class AppCompatibility
+    {
+        static Version Parse(string value)
+        {
+            if (!Regex.IsMatch(value ?? "", @"^\d+(\.\d+){0,3}$")) return null;
+            var parts = value.Split('.').ToList(); while (parts.Count < 4) parts.Add("0");
+            Version result; return Version.TryParse(String.Join(".", parts), out result) ? result : null;
+        }
+        public static string BlockReason(IpaDetails app, string ios)
+        {
+            if (app.Platforms != null && app.Platforms.Length > 0 && !app.Platforms.Any(x => String.Equals(x, "iPhoneOS", StringComparison.OrdinalIgnoreCase)))
+                return "Пакет предназначен для другой платформы: " + String.Join(", ", app.Platforms) + ". Для iPhone нужен iPhoneOS.";
+            var minimum = Parse(app.MinimumOS); var current = Parse(ios);
+            if (minimum != null && current != null && minimum > current)
+                return "Приложению требуется iOS " + app.MinimumOS + ", на iPhone установлена " + ios + ". Выберите более старую версию приложения.";
+            return null;
+        }
+    }
+}
+
 // Services/AppleSupportService.cs
 namespace IpaDesktop
 {
@@ -1723,6 +1775,50 @@ namespace IpaDesktop
     }
 }
 
+// Services/AppVersions.cs
+namespace IpaDesktop
+{
+    /// <summary>Получает список быстро, а дорогие сведения — только для выбранных пользователем версий.</summary>
+    public sealed class AppVersions
+    {
+        readonly IAppToolClient tool;
+        public AppVersions(IAppToolClient tool) { this.tool = tool; }
+        public static List<string> ParseManual(string text)
+        {
+            var ids = (text ?? "").Split(new[] { ',', ';', ' ', '\r', '\n', '\t' }, StringSplitOptions.RemoveEmptyEntries).Distinct().ToList();
+            if (ids.Count == 0 || ids.Count > 50 || ids.Any(x => !AppSetStore.ValidId(x))) throw new ArgumentException("Введите от 1 до 50 числовых ID версий через запятую или пробел (до 20 цифр каждый).");
+            return ids;
+        }
+        public async Task<List<AppVersionRow>> ListAsync(string appId, CancellationToken ct)
+        {
+            if (!AppSetStore.ValidId(appId)) throw new ArgumentException("Некорректный App Store ID.");
+            var result = await tool.RunAsync(new[] { "list-versions", "-i", appId }, ct, false);
+            ToolResponse.Ensure(result);
+            return ToolResponse.VersionIds(result.Output).Distinct().Reverse().Select(x => new AppVersionRow { ID = x }).ToList();
+        }
+        public async Task ReadAsync(string appId, AppVersionRow row, CancellationToken ct)
+        {
+            if (!AppSetStore.ValidId(appId) || !AppSetStore.ValidId(row.ID)) throw new ArgumentException("Некорректный ID.");
+            using (var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct))
+            {
+                timeout.CancelAfter(TimeSpan.FromSeconds(30));
+                try
+                {
+                    var result = await tool.RunAsync(new[] { "get-version-metadata", "-i", appId, "--external-version-id", row.ID }, timeout.Token, false);
+                    ToolResponse.Ensure(result); var data = ToolResponse.Object(result.Output);
+                    row.Version = ToolResponse.Get(data, "displayVersion") as string ?? "не указана";
+                    row.MinimumOS = ToolResponse.Get(data, "minimumOSVersion") as string ?? "не указана";
+                    var platforms = ToolResponse.Get(data, "supportedPlatforms") as object[];
+                    row.Platforms = platforms == null ? "не указаны" : String.Join(", ", platforms.OfType<string>().Where(x => !String.IsNullOrWhiteSpace(x)).Distinct());
+                    if (String.IsNullOrWhiteSpace(row.Platforms)) row.Platforms = "не указаны";
+                    row.State = "Готово";
+                }
+                catch (OperationCanceledException) { ct.ThrowIfCancellationRequested(); throw new System.IO.IOException("Сведения не получены за 30 секунд. Можно повторить."); }
+            }
+        }
+    }
+}
+
 // Services/BatchRunner.cs
 namespace IpaDesktop
 {
@@ -1803,103 +1899,116 @@ namespace IpaDesktop
             };
         }
         /// <summary>Получает UDID подключённых устройств и добавляет понятные имена для выбора в интерфейсе.</summary>
-        public async Task<List<DeviceRow>> FindAsync(CancellationToken ct)
+        public Task<List<DeviceRow>> FindAsync(CancellationToken ct) { return FindAsync(false, ct); }
+        public async Task<List<DeviceRow>> FindAsync(bool includeWifi, CancellationToken ct)
         {
-            Result result;
-            using (var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct))
+            var devices = new List<DeviceRow>(); bool usbFailed = false;
+            try { devices = await FindTransport(false, ct); }
+            catch (OperationCanceledException) { throw; }
+            catch (Exception e) { if (!includeWifi) throw; usbFailed = true; Log("Поиск USB: " + e.Message); }
+            if (includeWifi)
             {
-                timeout.CancelAfter(TimeSpan.FromSeconds(15));
-                try
-                {
-                    result = await runner.Run(locator.Find("idevice_id*.exe"), new[]
-                    {
-                        "-l"
-                    }, timeout.Token, false, false);
-                } catch (OperationCanceledException)
-                {
-                    ct.ThrowIfCancellationRequested();
-                    throw new IOException("Поиск iPhone не ответил за 15 секунд. Проверьте USB и драйвер Apple.");
-                }
+                try { devices.AddRange(await FindTransport(true, ct)); }
+                catch (OperationCanceledException) { throw; }
+                catch (Exception e) { if (usbFailed) throw new IOException("Не удалось проверить USB и Wi-Fi. Проверьте службу Apple и соединение.\n" + e.Message, e); Log("Поиск Wi-Fi: " + e.Message + ". USB-устройства сохранены. Проверьте сетевую синхронизацию в Apple Devices/iTunes."); }
             }
-            ToolResponse.Ensure(result);
-            var ids = result.Output.Split(new[]
-            {
-                '\r', '\n'
-            }, StringSplitOptions.RemoveEmptyEntries).Select(x => x.Trim()).Where(x => System.Text.RegularExpressions.Regex.IsMatch(x, "^[0-9A-Fa-f-]{20,}$")).Distinct().ToList();
+            foreach (var group in devices.GroupBy(x => x.Name + "|" + x.Connection).Where(g => g.Count() > 1))
+                foreach (var device in group) device.Name += " · " + device.ID.Substring(Math.Max(0, device.ID.Length - 6));
+            return devices;
+        }
+        async Task<List<DeviceRow>> FindTransport(bool network, CancellationToken ct)
+        {
+            var result = await Probe(locator.Find("idevice_id*.exe"), new[] { network ? "-n" : "-l" }, ct);
+            var ids = result.Output.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
+                .Select(x => x.Trim()).Where(x => System.Text.RegularExpressions.Regex.IsMatch(x, "^[0-9A-Fa-f-]{20,}$")).Distinct().ToList();
             var devices = new List<DeviceRow>();
             foreach (var id in ids)
             {
-                string name = "iPhone · " + id.Substring(Math.Max(0, id.Length - 6));
+                ct.ThrowIfCancellationRequested();
+                var device = new DeviceRow { ID = id, Network = network, Name = "iPhone · " + id.Substring(Math.Max(0, id.Length - 6)) };
                 try
                 {
-                    using (var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct))
-                    {
-                        timeout.CancelAfter(TimeSpan.FromSeconds(10));
-                        var info = await runner.Run(locator.Find("ideviceinfo*.exe"), new[]
-                        {
-                            "-u", id, "-k", "DeviceName"
-                        }, timeout.Token, false, false);
-                        ToolResponse.Ensure(info);
-                        string value = info.Output.Trim();
-                        if (value.StartsWith("DeviceName:", StringComparison.Ordinal)) value = value.Substring(11).Trim();
-                        if (value.Length > 0 && value.Length <= 200 && !value.Any(Char.IsControl)) name = value;
-                        else Log("Имя iPhone не получено. Используется короткий идентификатор.");
-                    }
-                } catch (OperationCanceledException)
+                    var info = await Probe(locator.Find("ideviceinfo*.exe"), Arguments(device, "-u", id, "-k", "DeviceName"), ct);
+                    string value = info.Output.Trim();
+                    if (value.StartsWith("DeviceName:", StringComparison.Ordinal)) value = value.Substring(11).Trim();
+                    if (value.Length > 0 && value.Length <= 200 && !value.Any(Char.IsControl)) device.Name = value;
+                }
+                catch (OperationCanceledException) { throw; }
+                catch (Exception e) { Log("Имя iPhone (" + device.Connection + ") не получено: " + e.Message); }
+                devices.Add(device);
+            }
+            return devices;
+        }
+        /// <summary>Один транспорт используется во всех командах; не допускает неявного перехода с Wi-Fi на USB.</summary>
+        public static string[] Arguments(DeviceRow device, params string[] args)
+        {
+            if (device == null || !System.Text.RegularExpressions.Regex.IsMatch(device.ID ?? "", "^[0-9A-Fa-f-]{20,}$")) throw new IOException("Некорректный идентификатор iPhone.");
+            return device.Network ? new[] { "--network" }.Concat(args).ToArray() : args;
+        }
+        async Task<Result> Probe(string exe, string[] args, CancellationToken ct)
+        {
+            using (var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct))
+            {
+                timeout.CancelAfter(TimeSpan.FromSeconds(15));
+                try { var result = await runner.Run(exe, args, timeout.Token, false, false); ToolResponse.Ensure(result); return result; }
+                catch (OperationCanceledException)
                 {
                     ct.ThrowIfCancellationRequested();
-                    Log("Время ожидания имени iPhone истекло. Разблокируйте устройство и подтвердите доверие.");
-                } catch (Exception e)
-                {
-                    Log("Не удалось прочитать имя iPhone: " + e.Message + ". Разблокируйте устройство и подтвердите доверие.");
+                    throw new IOException("iPhone не ответил за 15 секунд. Разблокируйте телефон; проверьте USB либо Wi-Fi и доверие компьютеру.");
                 }
-                devices.Add(new DeviceRow
-                {
-                    ID = id, Name = name
-                });
             }
-            foreach (var group in devices.GroupBy(x => x.Name).Where(g => g.Count() > 1)) foreach (var device in group) device.Name += " · " + device.ID.Substring(Math.Max(0, device.ID.Length - 6));
-            return devices;
+        }
+        public async Task<Dictionary<string, string>> ReadDeviceAsync(DeviceRow device, CancellationToken ct)
+        {
+            var result = await Probe(locator.Find("ideviceinfo*.exe"), Arguments(device, "-u", device.ID), ct);
+            var values = new Dictionary<string, string>(StringComparer.Ordinal);
+            foreach (var line in result.Output.Split('\n'))
+            {
+                int split = line.IndexOf(':');
+                if (split > 0) values[line.Substring(0, split).Trim()] = line.Substring(split + 1).Trim();
+            }
+            string actual;
+            if (values.TryGetValue("UniqueDeviceID", out actual) && !String.Equals(actual, device.ID, StringComparison.OrdinalIgnoreCase)) throw new IOException("Ответил другой iPhone. Повторите поиск устройств.");
+            if (device.Network && (!values.TryGetValue("ProductType", out actual) || !actual.StartsWith("iPhone", StringComparison.Ordinal)))
+                throw new IOException("Не удалось подтвердить связь с выбранным iPhone по Wi-Fi. Разблокируйте телефон и проверьте сетевую синхронизацию.");
+            return values;
         }
         /// <summary>По запросу читает модель и iOS одним вызовом ideviceinfo с ограниченным ожиданием.</summary>
         public async Task<string> DetailsAsync(DeviceRow device, CancellationToken ct)
         {
-            using (var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct))
-            {
-                timeout.CancelAfter(TimeSpan.FromSeconds(15));
-                Result result;
-                try { result = await runner.Run(locator.Find("ideviceinfo*.exe"), new[] { "-u", device.ID }, timeout.Token, false, false); }
-                catch (OperationCanceledException)
-                {
-                    ct.ThrowIfCancellationRequested();
-                    throw new IOException("iPhone не ответил за 15 секунд. Разблокируйте его и проверьте USB.");
-                }
-                ToolResponse.Ensure(result);
-                var values = new Dictionary<string, string>(StringComparer.Ordinal);
-                foreach (var line in result.Output.Split('\n'))
-                {
-                    int split = line.IndexOf(':');
-                    if (split > 0) values[line.Substring(0, split).Trim()] = line.Substring(split + 1).Trim();
-                }
-                string model, version;
-                if (!values.TryGetValue("ProductType", out model)) model = "не удалось прочитать";
-                if (!values.TryGetValue("ProductVersion", out version)) version = "не удалось прочитать";
-                return "Имя: " + device.Name + Environment.NewLine + "Модель (ProductType): " + model +
-                    Environment.NewLine + "iOS: " + version + Environment.NewLine + "UDID: " + device.ID;
-            }
+            var values = await ReadDeviceAsync(device, ct);
+            string model, version;
+            if (!values.TryGetValue("ProductType", out model)) model = "не удалось прочитать";
+            if (!values.TryGetValue("ProductVersion", out version)) version = "не удалось прочитать";
+            return "Имя: " + device.Name + Environment.NewLine + "Подключение: " + device.Connection + Environment.NewLine +
+                "Модель (ProductType): " + model + Environment.NewLine + "iOS: " + version + Environment.NewLine + "UDID: " + device.ID;
         }
         /// <summary>Устанавливает указанный IPA на выбранный UDID с поддержкой отмены.</summary>
         public async Task InstallAsync(DeviceRow device, LocalRow file, CancellationToken ct)
         {
             if (!File.Exists(file.Path)) throw new IOException("IPA-файл больше не существует.");
-            // CLI получает только ASCII-путь; Unicode-каталог передаётся через CreateProcessW.
-            // Это обходит несовместимость ANSI argv установщика и UTF-8 путей libzip.
-            using (var package = await InstallationPackage.CreateAsync(file.Path, ct))
+            try
             {
-                ToolResponse.Ensure(await runner.Run(locator.Find("ideviceinstaller*.exe"), new[]
+                // Проверяем тот файл, который действительно отправляем, и выбранный транспорт непосредственно перед установкой.
+                using (var package = await InstallationPackage.CreateAsync(file.Path, ct))
                 {
-                    "--udid", device.ID, "install", package.RelativePath
-                }, ct, false, true, package.WorkingDirectory));
+                    var details = await Task.Run(() => IpaMetadata.ReadDetails(Path.Combine(package.WorkingDirectory, package.RelativePath)), ct);
+                    var info = await ReadDeviceAsync(device, ct);
+                    string ios; info.TryGetValue("ProductVersion", out ios);
+                    string reason = AppCompatibility.BlockReason(details, ios);
+                    if (reason != null) throw new IOException(reason);
+                    if (String.IsNullOrEmpty(details.MinimumOS) || details.Platforms == null || details.Platforms.Length == 0 || String.IsNullOrEmpty(ios))
+                        Log("Совместимость " + file.DisplayName + ": часть метаданных недоступна; окончательную проверку выполнит iPhone.");
+                    ct.ThrowIfCancellationRequested();
+                    ToolResponse.Ensure(await runner.Run(locator.Find("ideviceinstaller*.exe"),
+                        Arguments(device, "--udid", device.ID, "install", package.RelativePath), ct, false, true, package.WorkingDirectory));
+                }
+            }
+            catch (OperationCanceledException) { throw; }
+            catch (Exception e)
+            {
+                if (!device.Network) throw;
+                throw new IOException("Установка по Wi-Fi не завершена. Проверьте связь и состояние приложения на iPhone. Разблокируйте телефон, проверьте общую сеть и сетевую синхронизацию; при необходимости выберите USB и повторите только ошибки.\n" + e.Message, e);
             }
         }
     }
@@ -1966,6 +2075,7 @@ namespace IpaDesktop
             get;
             private set;
         }
+        public AppVersions AppVersions { get; private set; }
         public State Settings
         {
             get
@@ -2040,6 +2150,7 @@ namespace IpaDesktop
             runner = processRunner ?? new ProcessRunner(Downloads);
             locator = new ToolLocator(settings);
             tools = new AppToolClient(runner, locator);
+            AppVersions = new AppVersions(tools);
             catalog = new AppCatalog(settings, locator);
             updater = new EngineUpdater(settings, runner);
             AppleSupport = new AppleSupportService(appleSupportProbe);
@@ -2564,7 +2675,7 @@ namespace IpaDesktop
                             metadataCache[path] = cached;
                         }
                         var metadata = cached.Item3;
-                        rows.Add(new LocalRow { Name = file.Name, Size = StorageAnalysis.Bytes(file.Length), Bytes = file.Length, Path = file.FullName, AppleAccount = metadata.Account, AppStoreID = metadata.AppStoreID, BundleID = metadata.BundleID, AppName = metadata.AppName, Version = metadata.Version, Build = metadata.Build });
+                        rows.Add(new LocalRow { Name = file.Name, Size = StorageAnalysis.Bytes(file.Length), Bytes = file.Length, Path = file.FullName, AppleAccount = metadata.Account, AppStoreID = metadata.AppStoreID, BundleID = metadata.BundleID, AppName = metadata.AppName, Version = metadata.Version, Build = metadata.Build, MinimumOS = metadata.MinimumOS, Platforms = metadata.Platforms == null ? null : (string[])metadata.Platforms.Clone() });
                     }
                     catch (FileNotFoundException) { }
                     catch (DirectoryNotFoundException) { }

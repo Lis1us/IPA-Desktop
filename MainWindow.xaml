@@ -1,4 +1,4 @@
-<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Title="IPA Desktop · 0.2.2" Width="1160" Height="800" MinWidth="940" MinHeight="720" WindowStartupLocation="CenterScreen" Background="#10151F" Foreground="#EDF1F8" FontFamily="Segoe UI" FontSize="14" UseLayoutRounding="True" SnapsToDevicePixels="True">
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Title="IPA Desktop · 0.2.3" Width="1160" Height="800" MinWidth="940" MinHeight="720" WindowStartupLocation="CenterScreen" Background="#10151F" Foreground="#EDF1F8" FontFamily="Segoe UI" FontSize="14" UseLayoutRounding="True" SnapsToDevicePixels="True">
   <Window.Resources>
     <!-- Общие состояния кнопок, полей, вкладок и таблиц. -->
     <Style TargetType="Button">
@@ -273,7 +273,7 @@
           <Image x:Name="BrandIcon" Width="46" Height="46" Margin="0,0,12,0"/>
           <TextBlock Text="IPA Desktop" FontSize="30" FontWeight="SemiBold" VerticalAlignment="Center"/>
           <Border Background="#23354E" CornerRadius="6" Padding="8,4" Margin="12,0,0,0" VerticalAlignment="Center">
-            <TextBlock Text="0.2.2" Foreground="#AFCDF7" FontSize="12"/>
+            <TextBlock Text="0.2.3" Foreground="#AFCDF7" FontSize="12"/>
           </Border>
         </StackPanel>
         <TextBlock Text="Приложения для iPhone — поиск, загрузка и установка" Foreground="#9BACBF" Margin="0,6,0,20">
@@ -342,8 +342,9 @@
           <WrapPanel Grid.Row="2" Margin="0,8,0,0">
             <Button x:Name="Versions" Content="Список версий"/>
             <ComboBox x:Name="VersionList" Margin="0,0,8,8"/>
+            <Button x:Name="VersionTable" Content="Таблица версий…"/>
             <Button x:Name="VersionInfo" Content="Сведения"/>
-            <Button x:Name="AddChosen" Content="В выбранное" ToolTip="Добавить выделенные строки или обновить выбранную версию. Можно также добавлять двойным кликом по строке."/>
+            <Button x:Name="AddChosen" Content="В выбранное" ToolTip="Добавить выделенные строки и выбранную версию. Можно также добавлять двойным кликом по строке."/>
             <Button x:Name="Download" Content="Скачать (0)" Background="#3878E5"/>
           </WrapPanel>
           <Border Grid.Row="3" Background="#101A29" BorderBrush="#2B3E58" BorderThickness="1" CornerRadius="8" Padding="10,6">
@@ -371,7 +372,7 @@
                       <Border Background="#22354F" CornerRadius="6" Margin="0,0,8,2" Padding="9,4">
                         <StackPanel Orientation="Horizontal">
                           <TextBlock Text="{Binding Label}" ToolTip="{Binding ID}" MaxWidth="260" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
-                          <Button Content="×" Tag="{Binding ID}" ToolTip="Убрать из выбранного" Padding="6,0" Margin="8,0,0,0" Background="#22354F"/>
+                          <Button Content="×" Tag="{Binding Key}" ToolTip="Убрать из выбранного" Padding="6,0" Margin="8,0,0,0" Background="#22354F"/>
                         </StackPanel>
                       </Border>
                     </DataTemplate>
@@ -403,7 +404,12 @@
               <Button x:Name="ImportFile" Content="Добавить IPA…"/>
               <Button x:Name="Devices" Content="Найти iPhone" Background="#16704C"/>
               <Button x:Name="DeviceInfo" Content="Об iPhone…"/>
-              <ComboBox x:Name="DeviceList" DisplayMemberPath="Name" Margin="0,0,8,8"/>
+              <ComboBox x:Name="DeviceList" DisplayMemberPath="DisplayLabel" Margin="0,0,8,8"/>
+            </WrapPanel>
+            <WrapPanel Margin="0,0,0,4">
+              <CheckBox x:Name="SearchWifi" Content="Искать также по Wi-Fi (экспериментально)" Foreground="#EDF1F8" VerticalAlignment="Center" Margin="0,0,12,4"/>
+              <Button x:Name="WifiHelp" Content="Как подключить по Wi-Fi?" FontSize="12" Padding="8,4"/>
+              <TextBlock x:Name="WifiStatus" Text="USB по умолчанию" Foreground="#AFC6E7" VerticalAlignment="Center" FontSize="12" Margin="8,0,0,4"/>
             </WrapPanel>
             <DockPanel Margin="0,0,0,8">
               <Button x:Name="OpenAppleSupportHelp" Content="Помощь Apple" DockPanel.Dock="Right" FontSize="12" Padding="8,4" Margin="8,0,0,0"/>
@@ -475,7 +481,7 @@
             <Border Background="#1C293B" BorderBrush="#34445C" BorderThickness="1" CornerRadius="10" Padding="20" Margin="0,0,0,24">
               <StackPanel>
                 <TextBlock Text="IPA Desktop" FontSize="22" FontWeight="SemiBold"/>
-                <TextBlock x:Name="GuiVersionStatus" Text="Установлена версия 0.2.2" Foreground="#8CBAFF" Margin="0,8,0,14"/>
+                <TextBlock x:Name="GuiVersionStatus" Text="Установлена версия 0.2.3" Foreground="#8CBAFF" Margin="0,8,0,14"/>
                 <CheckBox x:Name="CheckGuiUpdates" Content="Проверять новые версии программы при запуске" Foreground="#EDF1F8" Margin="0,0,0,16"/>
                 <WrapPanel>
                   <Button x:Name="CheckGuiUpdate" Content="Проверить версию"/>

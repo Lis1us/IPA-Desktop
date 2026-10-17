@@ -126,6 +126,12 @@ try {
    if($liveEngine.Settings.Current -ne $priorEngine -or $liveEngine.Settings.DeviceCurrent -ne $priorTools){throw "ipatool $tag rollback lost independent state"}
    Write-Host ('PASS: actual Windows ipatool '+$tag+' archive, SHA-256, CLI command contract, install and rollback')
   }
+  $probe=New-Object IpaDesktop.ProcessRunner($liveRoot)
+  foreach($name in @('idevice_id.exe','ideviceinfo.exe','ideviceinstaller.exe')){
+   $help=$probe.Run($liveEngine.Binary($name),[string[]]@('--help'),$ct,$false,$false,$null).GetAwaiter().GetResult()
+   if($help.Code -ne 0 -or !$help.Output.Contains('--network')){throw "Network transport unsupported by actual $name"}
+  }
+  Write-Host 'PASS: actual Windows device tools advertise network transport in all three CLI commands'
   Write-Host 'PASS: actual device CLI versions; independent device update/rollback; current release; save-failure recovery; cancellation'
   Write-Host ('PASS: actual upstream Windows ZIP '+$latest.tag_name+'; CLI startup/commands; fresh device import; migration; rollback')
  }

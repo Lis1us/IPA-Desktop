@@ -8,6 +8,8 @@ namespace IpaDesktop
         public string BundleID { get; set; }
         public string AppName { get; set; }
         public string Version { get; set; }
+        public string MinimumOS { get; set; }
+        public string[] Platforms { get; set; }
         public string Build { get; set; }
     }
 }

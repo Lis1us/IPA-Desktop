@@ -118,6 +118,28 @@ namespace IpaDesktop
                     Log("Версий: " + values.Length + ". В списке отображаются идентификаторы Apple.");
                 });
             });
+            On("VersionTable", delegate
+            {
+                var apps = SelectedApps();
+                if (apps.Count != 1) throw new Exception("Для таблицы версий выберите одно приложение.");
+                var app = apps[0];
+                Work("Получение списка версий…", async ct =>
+                {
+                    var rows = new List<AppVersionRow>();
+                    try { rows = await engine.AppVersions.ListAsync(app.ID, ct); }
+                    catch (OperationCanceledException) { throw; }
+                    catch (Exception e) { Log("Список версий недоступен: " + e.Message + ". Можно указать известный ID вручную."); }
+                    ct.ThrowIfCancellationRequested();
+                    using (var dialog = new AppVersionWindow(w, app.Name, app.ID, rows, engine.AppVersions, ct))
+                    {
+                        if (dialog.Window.ShowDialog() == true)
+                        {
+                            foreach (var id in dialog.SelectedIDs) chosen.AddVariant(app, id);
+                            RefreshChosen();
+                        }
+                    }
+                });
+            });
             On("VersionInfo", delegate
             {
                 var selected = SelectedApps();
@@ -156,7 +178,7 @@ namespace IpaDesktop
                 var row = item as AppRow;
                 if (row == null || chosen.Snapshot().Any(x => x.ID == row.ID)) return;
                 var combo = C<ComboBox>("VersionList");
-                chosen.Add(row, combo.SelectedIndex > 0 && versionApp == row.ID ? Convert.ToString(combo.SelectedItem) : null);
+                chosen.AddVariant(row, combo.SelectedIndex > 0 && versionApp == row.ID ? Convert.ToString(combo.SelectedItem) : null);
                 RefreshChosen();
             });
             On("AddChosen", delegate
@@ -165,7 +187,7 @@ namespace IpaDesktop
                 var combo = C<ComboBox>("VersionList");
                 string version = combo.SelectedIndex > 0 ? Convert.ToString(combo.SelectedItem) : null;
                 if (version != null && (rows.Count != 1 || rows[0].ID != versionApp)) throw new Exception("Для конкретной версии выберите одно приложение и обновите список версий.");
-                foreach (var row in rows) chosen.Add(row, version);
+                foreach (var row in rows) chosen.AddVariant(row, version);
                 RefreshChosen();
             });
             On("ClearChosen", delegate
@@ -177,7 +199,7 @@ namespace IpaDesktop
             SelectionRemove.Attach(C<ItemsControl>("ChosenApps"), delegate(string id)
             {
                 if (busy) return;
-                chosen.Remove(id);
+                chosen.RemoveKey(id);
                 RefreshChosen();
             });
             On("Download", delegate { StartDownloads(chosen.Snapshot()); });
@@ -212,16 +234,14 @@ namespace IpaDesktop
                     row =>
                     {
                         view.ReportItem(row.Name, null);
-                        var current = chosen.Snapshot().FirstOrDefault(x => x.ID == row.ID);
-                        // Повтор старой версии не снимает новую версию, отдельно выбранную пользователем.
-                        if (current != null && current.VersionID == row.VersionID) chosen.Remove(row.ID);
-                        failedDownloads.Remove(row.ID);
+                        chosen.RemoveKey(row.Key);
+                        failedDownloads.RemoveKey(row.Key);
                         RefreshChosen();
                     },
                     (row, error) =>
                     {
                         view.ReportItem(row.Name, error);
-                        failedDownloads.Add(new AppRow { ID = row.ID, Name = row.Name }, row.VersionID);
+                        failedDownloads.AddVariant(new AppRow { ID = row.ID, Name = row.Name }, row.VersionID);
                         Log("Не удалось скачать " + row.Name + ": " + error.Message);
                     }, RefreshLocalFiles, ct);
                 view.CompleteQueue(result.Succeeded, result.Failed.Count);
@@ -239,6 +259,7 @@ namespace IpaDesktop
             C<Button>("ClearChosen").IsEnabled = !busy && (chosen.Count > 0 || lastDownloads.Count > 0);
             C<Button>("Download").IsEnabled = !busy && chosen.Count > 0;
             C<ItemsControl>("ChosenApps").IsEnabled = !busy;
+            C<Button>("VersionTable").IsEnabled = !busy && C<DataGrid>("Apps").SelectedItems.Count == 1;
             C<Button>("VersionInfo").IsEnabled = !busy && C<DataGrid>("Apps").SelectedItems.Count == 1;
         }
         void RefreshChosen()

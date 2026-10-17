@@ -303,6 +303,100 @@ namespace IpaDesktop
     }
 }
 
+// Presentation/AppVersionWindow.cs
+namespace IpaDesktop
+{
+    /// <summary>Таблица версий с ручным ID, выборочной загрузкой метаданных и прерываемыми запросами.</summary>
+    public sealed class AppVersionWindow : IDisposable
+    {
+        public Window Window { get; private set; }
+        public List<string> SelectedIDs { get; private set; }
+        readonly CancellationTokenSource lifetime;
+        CancellationTokenSource operation;
+        bool loading, closing;
+        readonly DataGrid grid;
+        readonly TextBlock status;
+        readonly TextBox manual;
+        readonly Button details, add, insert, cancel;
+        readonly List<AppVersionRow> rows;
+        readonly AppVersions service;
+        readonly string appId;
+        public AppVersionWindow(Window owner, string name, string appId, List<AppVersionRow> rows, AppVersions service, CancellationToken ct)
+        {
+            this.appId = appId; this.rows = rows; this.service = service;
+            lifetime = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            SelectedIDs = new List<string>();
+            Window = AppDialogs.Create(owner, "Версии — " + name, 920, 610); Window.MinWidth = 750; Window.MinHeight = 470;
+            var layout = new Grid { Margin = new Thickness(18) };
+            layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            layout.RowDefinitions.Add(new RowDefinition());
+            layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            var heading = new TextBlock { Text = "Выберите несколько версий (Ctrl / Shift). Сведения запрашиваются только по кнопке, до 20 версий за раз.", TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0,0,0,12) };
+            layout.Children.Add(heading);
+            grid = new DataGrid { AutoGenerateColumns = false, IsReadOnly = true, CanUserAddRows = false, SelectionMode = DataGridSelectionMode.Extended, EnableRowVirtualization = true, EnableColumnVirtualization = false, ItemsSource = rows };
+            foreach (var column in new[] { new[] { "ID версии", "ID", "135" }, new[] { "Версия", "Version", "100" }, new[] { "Мин. ОС", "MinimumOS", "90" }, new[] { "Платформы", "Platforms", "135" }, new[] { "Состояние", "State", "280" } })
+                grid.Columns.Add(new DataGridTextColumn { Header = column[0], Binding = new Binding(column[1]), Width = new DataGridLength(Int32.Parse(column[2])) });
+            Grid.SetRow(grid,1);layout.Children.Add(grid);
+            var input = new DockPanel { Margin = new Thickness(0,12,0,0) };
+            insert = new Button { Content = "Добавить ID в таблицу", Margin = new Thickness(8,0,0,0) };DockPanel.SetDock(insert,Dock.Right);input.Children.Add(insert);
+            manual = new TextBox { ToolTip = "Один или несколько ID версий через запятую или пробел", MinWidth = 150 };input.Children.Add(manual);Grid.SetRow(input,2);layout.Children.Add(input);
+            var footer = new StackPanel { Margin = new Thickness(0,10,0,0) };
+            status = new TextBlock { Text = "Версий: " + rows.Count + ". Можно ввести известный ID вручную; доступность проверит Apple.", TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0,0,0,10) };footer.Children.Add(status);
+            var actions = new WrapPanel();details = new Button { Content = "Получить сведения" }; add = new Button { Content = "Добавить выбранные в очередь" };cancel = new Button { Content = "Закрыть" };
+            actions.Children.Add(details);actions.Children.Add(add);actions.Children.Add(cancel);footer.Children.Add(actions);Grid.SetRow(footer,3);layout.Children.Add(footer);Window.Content=layout;
+            grid.SelectionChanged += delegate { Refresh(); };
+            insert.Click += delegate
+            {
+                try
+                {
+                    var ids = AppVersions.ParseManual(manual.Text);grid.SelectedItems.Clear();
+                    foreach(var id in ids)
+                    {
+                        var row=rows.FirstOrDefault(x=>x.ID==id);
+                        if(row==null){row=new AppVersionRow{ID=id};rows.Insert(0,row);}
+                    }
+                    grid.Items.Refresh();foreach(var row in rows.Where(x=>ids.Contains(x.ID)))grid.SelectedItems.Add(row);
+                    manual.Text="";status.Text="Добавлено ID: "+ids.Count+". Можно запросить сведения или добавить в очередь.";Refresh();
+                }
+                catch(ArgumentException e){status.Text=e.Message;}
+            };
+            details.Click += async delegate
+            {
+                var selected=grid.SelectedItems.Cast<AppVersionRow>().ToList();
+                if(selected.Count>20){status.Text="Выберите не более 20 версий для одного запроса сведений.";return;}
+                loading=true;operation=CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);Refresh();
+                try
+                {
+                    for(int i=0;i<selected.Count;i++)
+                    {
+                        operation.Token.ThrowIfCancellationRequested();var row=selected[i];
+                        status.Text="Сведения: "+(i+1)+" / "+selected.Count+" · ID "+row.ID;
+                        try { await service.ReadAsync(appId,row,operation.Token); }
+                        catch(OperationCanceledException){throw;}
+                        catch(Exception e){row.State=e.Message.Length>240?e.Message.Substring(0,240):e.Message;}
+                        grid.Items.Refresh();
+                    }
+                    status.Text="Обработано версий: "+selected.Count+". Неизвестные данные не подтверждают совместимость с iPhone.";
+                }
+                catch(OperationCanceledException){status.Text="Запрос отменён. Полученные сведения сохранены в таблице.";}
+                finally{loading=false;operation.Dispose();operation=null;Refresh();if(closing)Window.Close();}
+            };
+            add.Click+=delegate {SelectedIDs=grid.SelectedItems.Cast<AppVersionRow>().Select(x=>x.ID).ToList();Window.DialogResult=true;};
+            cancel.Click+=delegate{if(loading)operation.Cancel();else Window.Close();};
+            Window.Closing+=delegate(object sender,System.ComponentModel.CancelEventArgs e){if(loading){closing=true;e.Cancel=true;operation.Cancel();}};
+            Refresh();
+        }
+        void Refresh()
+        {
+            grid.IsEnabled=!loading;manual.IsEnabled=!loading;insert.IsEnabled=!loading;
+            details.IsEnabled=!loading&&grid.SelectedItems.Count>0;add.IsEnabled=details.IsEnabled;
+            cancel.Content=loading?"Отменить запрос":"Закрыть";
+        }
+        public void Dispose(){lifetime.Dispose();}
+    }
+}
+
 // Presentation/Desktop.cs
 namespace IpaDesktop
 {
@@ -827,17 +921,26 @@ namespace IpaDesktop
                     var combo = C<ComboBox>("DeviceList");
                     combo.ItemsSource = null;
                     ApplyActions();
-                    var devices = await engine.Devices.FindAsync(ct);
+                    var devices = await engine.Devices.FindAsync(C<CheckBox>("SearchWifi").IsChecked == true, ct);
                     combo.ItemsSource = devices;
+                    C<TextBlock>("WifiStatus").Text = "USB: " + devices.Count(x => !x.Network) + " · Wi-Fi: " + devices.Count(x => x.Network);
                     if (devices.Count > 0)
                     {
                         foreach (var device in devices) { view.RegisterPrivate(device.ID); view.RegisterPrivate(device.Name); }
                         combo.SelectedIndex = 0;
-                        Log("Найдено: " + String.Join(", ", devices.Select(x => x.Name)));
+                        Log("Найдено: " + String.Join(", ", devices.Select(x => x.DisplayLabel)));
                     } else Log("iPhone не обнаружен. Проверьте USB, доверие и драйвер Apple.");
                     ApplyActions();
                 });
             });
+            C<CheckBox>("SearchWifi").Click += delegate
+            {
+                C<ComboBox>("DeviceList").ItemsSource = null;
+                C<TextBlock>("WifiStatus").Text = "Нажмите «Найти iPhone»";
+                ApplyActions();
+            };
+            On("WifiHelp", delegate { AppDialogs.ShowText(w, "Подключение iPhone по Wi-Fi",
+                "1. Подключите iPhone по USB и подтвердите доверие компьютеру.\n2. В Apple Devices включите «Показывать это устройство при подключении к Wi-Fi» и примените настройки. В iTunes — «Синхронизировать с этим iPhone по Wi-Fi».\n3. Подключите компьютер и iPhone к одной локальной сети, затем отключите USB.\n4. Включите «Искать также по Wi-Fi» и нажмите «Найти iPhone». Выберите строку с отметкой Wi-Fi.\n\nЕсли телефон не найден: разблокируйте его, проверьте службу Apple Mobile Device, Bonjour, разрешения Apple в брандмауэре и отсутствие изоляции устройств в гостевой сети. VPN может мешать обнаружению.\n\nРежим экспериментальный. При обрыве не переключаемся автоматически на USB и не повторяем установку без вашего действия. Проверьте результат на телефоне, прежде чем нажимать «Повторить ошибки». "); });
             On("InstallFiles", delegate { StartInstall(installChosen.Snapshot()); });
             On("RetryInstalls", delegate { StartInstall(failedInstalls.Snapshot()); });
             On("ForgetInstallErrors", delegate { failedInstalls.Clear(); ApplyActions(); });
@@ -873,7 +976,7 @@ namespace IpaDesktop
             if (device == null || rows.Count == 0) throw new Exception("Выберите устройство и IPA для установки.");
             var summary = String.Join(Environment.NewLine, rows.Take(8).Select(x => x.DisplayName));
             if (rows.Count > 8) summary += Environment.NewLine + "… и ещё " + (rows.Count - 8);
-            if (MessageBox.Show(w, "Установить IPA (" + rows.Count + ") на " + device.Name + "?" + Environment.NewLine + Environment.NewLine + summary, "Установка", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) != MessageBoxResult.Yes) return;
+            if (MessageBox.Show(w, "Установить IPA (" + rows.Count + ") на " + device.DisplayLabel + "?" + Environment.NewLine + Environment.NewLine + summary, "Установка", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) != MessageBoxResult.Yes) return;
             Work("Установка IPA…", async delegate(CancellationToken ct)
             {
                 view.StartReport("Установка", rows.Count, delegate { StartInstall(failedInstalls.Snapshot()); });
@@ -905,6 +1008,8 @@ namespace IpaDesktop
         /// <summary>Пересчитывает доступность действий по состоянию выбора и выполняемой операции.</summary>
         public override void RefreshActions()
         {
+            C<CheckBox>("SearchWifi").IsEnabled = !busy;
+            C<Button>("WifiHelp").IsEnabled = !busy;
             C<Button>("FileInfo").IsEnabled = !busy && C<DataGrid>("Files").SelectedItems.Count == 1;
             C<Button>("DeviceInfo").IsEnabled = !busy && C<ComboBox>("DeviceList").SelectedItem != null;
             C<Button>("RetryInstalls").IsEnabled = !busy && failedInstalls.Count > 0 && C<ComboBox>("DeviceList").SelectedItem != null;
@@ -1120,6 +1225,28 @@ namespace IpaDesktop
                     Log("Версий: " + values.Length + ". В списке отображаются идентификаторы Apple.");
                 });
             });
+            On("VersionTable", delegate
+            {
+                var apps = SelectedApps();
+                if (apps.Count != 1) throw new Exception("Для таблицы версий выберите одно приложение.");
+                var app = apps[0];
+                Work("Получение списка версий…", async ct =>
+                {
+                    var rows = new List<AppVersionRow>();
+                    try { rows = await engine.AppVersions.ListAsync(app.ID, ct); }
+                    catch (OperationCanceledException) { throw; }
+                    catch (Exception e) { Log("Список версий недоступен: " + e.Message + ". Можно указать известный ID вручную."); }
+                    ct.ThrowIfCancellationRequested();
+                    using (var dialog = new AppVersionWindow(w, app.Name, app.ID, rows, engine.AppVersions, ct))
+                    {
+                        if (dialog.Window.ShowDialog() == true)
+                        {
+                            foreach (var id in dialog.SelectedIDs) chosen.AddVariant(app, id);
+                            RefreshChosen();
+                        }
+                    }
+                });
+            });
             On("VersionInfo", delegate
             {
                 var selected = SelectedApps();
@@ -1158,7 +1285,7 @@ namespace IpaDesktop
                 var row = item as AppRow;
                 if (row == null || chosen.Snapshot().Any(x => x.ID == row.ID)) return;
                 var combo = C<ComboBox>("VersionList");
-                chosen.Add(row, combo.SelectedIndex > 0 && versionApp == row.ID ? Convert.ToString(combo.SelectedItem) : null);
+                chosen.AddVariant(row, combo.SelectedIndex > 0 && versionApp == row.ID ? Convert.ToString(combo.SelectedItem) : null);
                 RefreshChosen();
             });
             On("AddChosen", delegate
@@ -1167,7 +1294,7 @@ namespace IpaDesktop
                 var combo = C<ComboBox>("VersionList");
                 string version = combo.SelectedIndex > 0 ? Convert.ToString(combo.SelectedItem) : null;
                 if (version != null && (rows.Count != 1 || rows[0].ID != versionApp)) throw new Exception("Для конкретной версии выберите одно приложение и обновите список версий.");
-                foreach (var row in rows) chosen.Add(row, version);
+                foreach (var row in rows) chosen.AddVariant(row, version);
                 RefreshChosen();
             });
             On("ClearChosen", delegate
@@ -1179,7 +1306,7 @@ namespace IpaDesktop
             SelectionRemove.Attach(C<ItemsControl>("ChosenApps"), delegate(string id)
             {
                 if (busy) return;
-                chosen.Remove(id);
+                chosen.RemoveKey(id);
                 RefreshChosen();
             });
             On("Download", delegate { StartDownloads(chosen.Snapshot()); });
@@ -1214,16 +1341,14 @@ namespace IpaDesktop
                     row =>
                     {
                         view.ReportItem(row.Name, null);
-                        var current = chosen.Snapshot().FirstOrDefault(x => x.ID == row.ID);
-                        // Повтор старой версии не снимает новую версию, отдельно выбранную пользователем.
-                        if (current != null && current.VersionID == row.VersionID) chosen.Remove(row.ID);
-                        failedDownloads.Remove(row.ID);
+                        chosen.RemoveKey(row.Key);
+                        failedDownloads.RemoveKey(row.Key);
                         RefreshChosen();
                     },
                     (row, error) =>
                     {
                         view.ReportItem(row.Name, error);
-                        failedDownloads.Add(new AppRow { ID = row.ID, Name = row.Name }, row.VersionID);
+                        failedDownloads.AddVariant(new AppRow { ID = row.ID, Name = row.Name }, row.VersionID);
                         Log("Не удалось скачать " + row.Name + ": " + error.Message);
                     }, RefreshLocalFiles, ct);
                 view.CompleteQueue(result.Succeeded, result.Failed.Count);
@@ -1241,6 +1366,7 @@ namespace IpaDesktop
             C<Button>("ClearChosen").IsEnabled = !busy && (chosen.Count > 0 || lastDownloads.Count > 0);
             C<Button>("Download").IsEnabled = !busy && chosen.Count > 0;
             C<ItemsControl>("ChosenApps").IsEnabled = !busy;
+            C<Button>("VersionTable").IsEnabled = !busy && C<DataGrid>("Apps").SelectedItems.Count == 1;
             C<Button>("VersionInfo").IsEnabled = !busy && C<DataGrid>("Apps").SelectedItems.Count == 1;
         }
         void RefreshChosen()

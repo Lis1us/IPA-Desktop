@@ -25,9 +25,13 @@ namespace IpaDesktop
             {
                 return DisplayName + Environment.NewLine + "Версия: " + (String.IsNullOrWhiteSpace(Version) ? "не указана" : Version) +
                     Environment.NewLine + "Apple Account: " + (String.IsNullOrWhiteSpace(AppleAccount) ? "не указан" : AppleAccount) +
+                    Environment.NewLine + "Минимальная ОС: " + (MinimumOS ?? "не указана") +
+                    Environment.NewLine + "Платформы: " + (Platforms == null || Platforms.Length == 0 ? "не указаны" : String.Join(", ", Platforms)) +
                     Environment.NewLine + "Файл: " + Name + Environment.NewLine + Path;
             }
         }
+        public string MinimumOS { get; set; }
+        public string[] Platforms { get; set; }
         public long Bytes { get; set; }
         public string AppStoreID { get; set; }
         public string BundleID { get; set; }

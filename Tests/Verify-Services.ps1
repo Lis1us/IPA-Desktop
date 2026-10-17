@@ -3,7 +3,7 @@ $ErrorActionPreference='Stop'
 Add-Type -AssemblyName PresentationFramework,PresentationCore,WindowsBase,System.Xaml
 [Reflection.Assembly]::LoadFrom((Join-Path $projectRoot 'IPA-Desktop.exe'))|Out-Null
 Copy-Item -LiteralPath (Join-Path $projectRoot 'IPA-Desktop.exe') -Destination (Join-Path $projectRoot 'IPA-Desktop-test.dll') -Force
-Add-Type -ReferencedAssemblies @((Join-Path $projectRoot 'IPA-Desktop-test.dll'),'System.dll','System.Core.dll') -TypeDefinition @'
+Add-Type -ReferencedAssemblies @((Join-Path $projectRoot 'IPA-Desktop-test.dll'),'System.dll','System.Core.dll','System.IO.Compression.dll','System.IO.Compression.FileSystem.dll') -TypeDefinition @'
 using System;
 using System.IO;
 using System.Collections.Generic;
@@ -69,6 +69,78 @@ public sealed class RecordingProcessRunner : IProcessRunner
         return Task.FromResult(new Result { Code = 0, Output = output });
     }
 }
+public sealed class WifiRunner : IProcessRunner {
+ public Action<string> Log{get;set;} public Process Active{get{return null;}}
+ public int Installs,NetworkInstalls;public bool NetworkFailure,UsbFailure,InstallFailure,WrongIdentity;
+ public string Ios="17.0";
+ public Task<Result> Run(string exe,string[] args,CancellationToken ct,bool visible,bool publish,string workingDirectory=null){
+  ct.ThrowIfCancellationRequested();bool net=Array.IndexOf(args,"--network")>=0||Array.IndexOf(args,"-n")>=0;
+  if(exe.EndsWith("idevice_id.exe")){
+   if(net&&NetworkFailure||!net&&UsbFailure)return Task.FromResult(new Result{Code=1,Output="discovery failed"});
+   return Task.FromResult(new Result{Code=0,Output="00008030-0000111ABC000DEF\ninvalid\n00008030-0000111ABC000DEF"});
+  }
+  if(exe.EndsWith("ideviceinfo.exe")){
+   if(net&&NetworkFailure)return Task.FromResult(new Result{Code=1,Output="network unreachable"});
+   return Task.FromResult(new Result{Code=0,Output=Array.IndexOf(args,"-k")>=0?"Test iPhone":"UniqueDeviceID: "+(WrongIdentity?"00008030-0000111ABC000ABC":"00008030-0000111ABC000DEF")+"\nProductType: iPhone16,2\nProductVersion: "+Ios});
+  }
+  if(exe.EndsWith("ideviceinstaller.exe")){
+   Installs++;if(net)NetworkInstalls++;
+   int offset=net?1:0;if(args[offset]!="--udid"||args[offset+1]!="00008030-0000111ABC000DEF"||args[offset+2]!="install")throw new Exception("Transport/UDID arguments lost");
+   if(!File.Exists(Path.Combine(workingDirectory,args[offset+3])))throw new Exception("Missing staged package");
+   return Task.FromResult(new Result{Code=InstallFailure?1:0,Output=InstallFailure?"connection lost":"OK"});
+  }
+  throw new Exception("Unexpected command");
+ }
+}
+public sealed class VersionTool : IAppToolClient {
+ public readonly List<string[]> Calls=new List<string[]>();
+ public Task<Result> RunAsync(string[] args,CancellationToken ct,bool publish){
+  ct.ThrowIfCancellationRequested();Calls.Add(args);if(publish)throw new Exception("Version query published raw data");
+  return Task.FromResult(new Result{Code=0,Output=args[0]=="list-versions"?"{\"externalVersionIdentifiers\":[\"100\",\"200\",\"200\"]}":"{\"displayVersion\":\"2.0\",\"minimumOSVersion\":\"16.0\",\"supportedPlatforms\":[\"iPhoneOS\"]}"});
+ }
+}
+public static class WifiVersionContract {
+ static void Assert(bool ok,string message){if(!ok)throw new Exception(message);}
+ static void Reject(Action action,string message){try{action();}catch(Exception){return;}throw new Exception(message);}
+ static void Ipa(string path,string minimum,string platform,bool binary){
+  using(var z=System.IO.Compression.ZipFile.Open(path,System.IO.Compression.ZipArchiveMode.Create)){
+   using(var stream=z.CreateEntry("Payload/Test.app/Info.plist").Open()){
+    byte[] bytes=binary?Convert.FromBase64String("YnBsaXN0MDDSAQIDBV8QGkNGQnVuZGxlU3VwcG9ydGVkUGxhdGZvcm1zXxAQTWluaW11bU9TVmVyc2lvbqEEWGlQaG9uZU9TVDE2LjAIDSo9P0gAAAAAAAABAQAAAAAAAAAGAAAAAAAAAAAAAAAAAAAATQ=="):System.Text.Encoding.UTF8.GetBytes("<plist><dict><key>MinimumOSVersion</key><string>"+minimum+"</string><key>CFBundleSupportedPlatforms</key><array><string>"+platform+"</string></array></dict></plist>");
+    stream.Write(bytes,0,bytes.Length);
+   }
+  }
+ }
+ public static void Run(string root){
+  var ct=CancellationToken.None;Directory.CreateDirectory(root);
+  var runner=new WifiRunner();var engine=new Engine(root,runner);engine.Settings.Current="test";
+  string bins=Path.Combine(root,"Versions/test/windows_amd64");Directory.CreateDirectory(bins);
+  foreach(var name in new[]{"idevice_id.exe","ideviceinfo.exe","ideviceinstaller.exe"})File.WriteAllText(Path.Combine(bins,name),"fixture");
+  var devices=engine.Devices.FindAsync(true,ct).GetAwaiter().GetResult();
+  Assert(devices.Count==2&&!devices[0].Network&&devices[1].Network&&devices[1].DisplayLabel.Contains("Wi-Fi"),"Discovery merged transports or duplicated UDIDs");
+  runner.UsbFailure=true;Assert(engine.Devices.FindAsync(true,ct).GetAwaiter().GetResult().Count==1,"USB failure blocked Wi-Fi");runner.UsbFailure=false;
+  runner.NetworkFailure=true;Assert(engine.Devices.FindAsync(true,ct).GetAwaiter().GetResult().Count==1,"Wi-Fi failure lost USB");runner.NetworkFailure=false;
+  string good=Path.Combine(root,"good.ipa"),bad=Path.Combine(root,"bad.ipa"),mac=Path.Combine(root,"mac.ipa"),binary=Path.Combine(root,"binary.ipa");
+  Ipa(good,"16.0","iPhoneOS",false);Ipa(bad,"18.0","iPhoneOS",false);Ipa(mac,"15.0","MacOSX",false);Ipa(binary,"","",true);
+  var binaryInfo=IpaMetadata.ReadDetails(binary);Assert(binaryInfo.MinimumOS=="16.0"&&binaryInfo.Platforms.Length==1&&binaryInfo.Platforms[0]=="iPhoneOS","Binary plist minimum OS/platform lost");
+  Assert(AppCompatibility.BlockReason(new IpaDetails{MinimumOS="17.0.0",Platforms=new[]{"iPhoneOS"}},"17.0")==null,"Equal normalized OS blocked");
+  Assert(AppCompatibility.BlockReason(new IpaDetails(),null)==null,"Unknown compatibility fabricated");
+  engine.Devices.InstallAsync(devices[1],new LocalRow{Path=good},ct).GetAwaiter().GetResult();Assert(runner.NetworkInstalls==1,"Wi-Fi install did not use network");
+  Reject(()=>engine.Devices.InstallAsync(devices[1],new LocalRow{Path=bad},ct).GetAwaiter().GetResult(),"Installed unsupported iOS");
+  Reject(()=>engine.Devices.InstallAsync(devices[0],new LocalRow{Path=mac},ct).GetAwaiter().GetResult(),"Installed macOS package");
+  Assert(runner.Installs==1,"Blocked compatibility reached installer");
+  runner.WrongIdentity=true;Reject(()=>engine.Devices.InstallAsync(devices[1],new LocalRow{Path=good},ct).GetAwaiter().GetResult(),"Wrong device accepted");runner.WrongIdentity=false;
+  runner.NetworkFailure=true;Reject(()=>engine.Devices.InstallAsync(devices[1],new LocalRow{Path=good},ct).GetAwaiter().GetResult(),"Offline device installed");runner.NetworkFailure=false;
+  Assert(runner.Installs==1,"Offline Wi-Fi fell back to USB");
+  runner.InstallFailure=true;Reject(()=>engine.Devices.InstallAsync(devices[1],new LocalRow{Path=good},ct).GetAwaiter().GetResult(),"Failed install succeeded");Assert(runner.Installs==2&&runner.NetworkInstalls==2,"Wi-Fi failure retried automatically");runner.InstallFailure=false;
+  using(var stop=new CancellationTokenSource()){stop.Cancel();Reject(()=>engine.Devices.InstallAsync(devices[1],new LocalRow{Path=good},stop.Token).GetAwaiter().GetResult(),"Cancelled install succeeded");}Assert(runner.Installs==2,"Cancellation started installer");
+  var queue=new DownloadSelection();var app=new AppRow{ID="123",Name="Test"};queue.AddVariant(app,"100");queue.AddVariant(app,"200");queue.AddVariant(app,"100");queue.AddVariant(app,null);
+  Assert(queue.Count==3,"Multiple versions collapsed or duplicates added");var snapshot=queue.Snapshot();queue.RemoveKey(snapshot[0].Key);Assert(queue.Count==2&&queue.Snapshot()[0].VersionID=="200","Removal deleted adjacent version");
+  Assert(AppVersions.ParseManual("100, 200 100").Count==2,"Manual ID dedup failed");Reject(()=>AppVersions.ParseManual("100 --debug"),"Unsafe manual ID accepted");
+  var tool=new VersionTool();var versions=new AppVersions(tool);var rows=versions.ListAsync("123",ct).GetAwaiter().GetResult();Assert(rows.Count==2&&rows[0].ID=="200"&&tool.Calls.Count==1,"Version list queried metadata eagerly");
+  versions.ReadAsync("123",rows[0],ct).GetAwaiter().GetResult();Assert(rows[0].Version=="2.0"&&rows[0].MinimumOS=="16.0"&&rows[0].Platforms=="iPhoneOS","Version table metadata missing");
+ }
+}
+
 '@
 # Реальные схемы get-version-metadata: 1.1.8 без новых полей, 1.1.9 с minimumOSVersion, 1.2.0 с supportedPlatforms.
 $old=[IpaDesktop.ToolResponse]::VersionMetadataText([IpaDesktop.ToolResponse]::Object('{"displayVersion":"2.3","releaseDate":"2026-10-15","success":true}'))
@@ -86,6 +158,8 @@ $temp=Join-Path ([IO.Path]::GetTempPath()) ('ipa-oop-'+[Guid]::NewGuid().ToStrin
 $window=$null
 $originalContext=[Threading.SynchronizationContext]::Current
 try {
+ [WifiVersionContract]::Run((Join-Path $temp 'wifi-contract'))
+ Write-Host 'PASS: USB/Wi-Fi discovery isolation, partial discovery failure, network flags, connection identity, actual staged IPA compatibility, XML/binary minimum OS, platform rejection, cancellation, no silent fallback/retry, multiple versions and manual IDs'
  $runner=New-Object RecordingProcessRunner
  $supportProbe=New-Object InstalledAppleSupportProbe
  $engine=New-Object IpaDesktop.Engine($temp,$runner,$supportProbe)
@@ -363,6 +437,34 @@ public static class InstallPathProbe {
  $runner.FailDownload=$false;Click 'NoticeRetry';WaitIdle
  $report=$desktop.GetType().GetField('lastReport',[Reflection.BindingFlags]'Instance,NonPublic').GetValue($desktop)
  if($report.Failed -ne 0 -or $report.Succeeded -ne 1 -or $window.FindName('NoticeRetry').Visibility -ne 'Collapsed'){throw 'Banner retry did not replace the failed result with success'}
+ # Exercise actual version-table controls, multiple manual IDs, metadata button and modal result.
+ $versionTool=New-Object VersionTool
+ $versionService=New-Object IpaDesktop.AppVersions($versionTool)
+ $versionRows=$versionService.ListAsync('123',[Threading.CancellationToken]::None).GetAwaiter().GetResult()
+ $script:versionDialog=New-Object IpaDesktop.AppVersionWindow($window,'Fixture','123',$versionRows,$versionService,[Threading.CancellationToken]::None)
+ $script:versionUiError=$null
+ $window.Dispatcher.BeginInvoke([Action]{
+  try{
+   $dialog=$script:versionDialog;$type=$dialog.GetType();$flags=[Reflection.BindingFlags]'Instance,NonPublic'
+   $manual=$type.GetField('manual',$flags).GetValue($dialog);$manual.Text='300, 100'
+   $insert=$type.GetField('insert',$flags).GetValue($dialog);$insert.RaiseEvent((New-Object Windows.RoutedEventArgs([Windows.Controls.Button]::ClickEvent,$insert)))
+   $grid=$type.GetField('grid',$flags).GetValue($dialog)
+   if($grid.SelectedItems.Count -ne 2 -or $grid.Items.Count -ne 3){throw 'Manual IDs failed in actual dialog'}
+   $details=$type.GetField('details',$flags).GetValue($dialog);$details.RaiseEvent((New-Object Windows.RoutedEventArgs([Windows.Controls.Button]::ClickEvent,$details)))
+   if(@($grid.SelectedItems|Where-Object MinimumOS -eq '16.0').Count -ne 2){throw 'Selected metadata not shown in actual table'}
+   $dialog.Window.Width=750;$dialog.Window.Height=470;$dialog.Window.UpdateLayout()
+   if($grid.ActualHeight -lt 100 -or $grid.Columns[2].ActualWidth -lt 70){throw 'Version table collapsed at minimum size'}
+   $target=$dialog.Window.Content
+   $bmp=New-Object Windows.Media.Imaging.RenderTargetBitmap([int]$target.ActualWidth,[int]$target.ActualHeight,96,96,[Windows.Media.PixelFormats]::Pbgra32)
+   $bmp.Render($target);$png=New-Object Windows.Media.Imaging.PngBitmapEncoder;$png.Frames.Add([Windows.Media.Imaging.BitmapFrame]::Create($bmp))
+   $memory=New-Object IO.MemoryStream;try{$png.Save($memory);Write-Host ('IPA_VERSION_TABLE_PREVIEW:'+ [Convert]::ToBase64String($memory.ToArray()))}finally{$memory.Dispose()}
+   $add=$type.GetField('add',$flags).GetValue($dialog);$add.RaiseEvent((New-Object Windows.RoutedEventArgs([Windows.Controls.Button]::ClickEvent,$add)))
+  }catch{$script:versionUiError=$_;$script:versionDialog.Window.Close()}
+ })|Out-Null
+ try{
+  if($script:versionDialog.Window.ShowDialog() -ne $true -or $script:versionUiError -or $script:versionDialog.SelectedIDs.Count -ne 2){throw ('Version dialog failed: '+$script:versionUiError)}
+ }finally{$script:versionDialog.Dispose()}
+ Write-Host 'PASS: actual WPF version table, manual IDs, selected metadata, multiple selection, minimum layout and modal queue result'
  # Dialog factories render the same IPA details and shared theme without extra file reads.
  $ipaDialog=[IpaDesktop.AppDialogs]::Ipa($window,$window.FindName('Files').Items[0])
  $ipaDialog.Show();$ipaDialog.UpdateLayout()

@@ -102,6 +102,18 @@ namespace IpaDesktop
                 return null;
             }
         }
+        static string[] Platforms(byte[] bytes)
+        {
+            if (bytes == null) return new string[0];
+            if (bytes.Length >= 8 && Encoding.ASCII.GetString(bytes, 0, 8) == "bplist00") return new BinaryPlist(bytes).Strings("CFBundleSupportedPlatforms");
+            using (var stream = new MemoryStream(bytes))
+            using (var reader = XmlReader.Create(stream, new XmlReaderSettings { DtdProcessing = DtdProcessing.Ignore, XmlResolver = null, MaxCharactersInDocument = Limit }))
+            {
+                var doc = new XmlDocument { XmlResolver = null }; doc.Load(reader);
+                var node = doc.SelectSingleNode("/plist/dict/key[.='CFBundleSupportedPlatforms']/following-sibling::*[1][self::array]");
+                return node == null ? new string[0] : node.ChildNodes.Cast<XmlNode>().Where(x => x.Name == "string").Select(x => Field(x.InnerText)).Where(x => x != null).Distinct().ToArray();
+            }
+        }
         static string Field(string text)
         {
             if (String.IsNullOrWhiteSpace(text) || text.Length > 320 || text.Any(Char.IsControl)) return null;
@@ -130,6 +142,13 @@ namespace IpaDesktop
                         details.AppName = Field(Value(info, "CFBundleDisplayName", "CFBundleName")) ?? details.AppName;
                         details.Version = Field(Value(info, "CFBundleShortVersionString")) ?? details.Version;
                         details.Build = Field(Value(info, "CFBundleVersion"));
+                        details.MinimumOS = Field(Value(info, "MinimumOSVersion"));
+                        details.Platforms = Platforms(info);
+                        if (details.Platforms.Length == 0)
+                        {
+                            string platform = Field(Value(info, "DTPlatformName"));
+                            if (platform != null) details.Platforms = new[] { String.Equals(platform, "iphoneos", StringComparison.OrdinalIgnoreCase) ? "iPhoneOS" : platform };
+                        }
                     }
                 }
             }
@@ -247,6 +266,28 @@ namespace IpaDesktop
                 int size = checked(n * (type == 6 ? 2 : 1));
                 Bounds(pos, size, table);
                 return type == 6 ? Encoding.BigEndianUnicode.GetString(data, pos, size) : Encoding.ASCII.GetString(data, pos, size);
+            }
+            public string[] Strings(string wantedKey)
+            {
+                int pos = Offset(top), marker = data[pos++];
+                if ((marker >> 4) != 13) return new string[0];
+                int count = Length(marker, ref pos); Bounds(pos, checked(count * refSize * 2), table);
+                for (int i = 0; i < count; i++)
+                {
+                    if (!String.Equals(Text(IntNumber(pos + i * refSize, refSize)), wantedKey, StringComparison.OrdinalIgnoreCase)) continue;
+                    int offset = Offset(IntNumber(pos + (count + i) * refSize, refSize));
+                    int arrayMarker = data[offset++];
+                    if ((arrayMarker >> 4) != 10) return new string[0];
+                    int length = Length(arrayMarker, ref offset); Bounds(offset, checked(length * refSize), table);
+                    var values = new List<string>();
+                    for (int j = 0; j < length; j++)
+                    {
+                        string value = Field(Text(IntNumber(offset + j * refSize, refSize)));
+                        if (value != null) values.Add(value);
+                    }
+                    return values.Distinct().ToArray();
+                }
+                return new string[0];
             }
             public string Account() { return Value("appleId", false); }
             public string Value(string wantedKey, bool allowInteger = true)

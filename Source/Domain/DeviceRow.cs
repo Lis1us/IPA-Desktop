@@ -13,6 +13,9 @@ namespace IpaDesktop
             get;
             set;
         }
+        public bool Network { get; set; }
+        public string Connection { get { return Network ? "Wi-Fi" : "USB"; } }
+        public string DisplayLabel { get { return Name + " · " + Connection; } }
         public override string ToString()
         {
             return Name;
